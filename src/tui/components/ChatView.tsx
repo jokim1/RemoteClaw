@@ -52,7 +52,7 @@ export function ChatView({ messages, isProcessing, streamingContent, modelAlias,
   if (messages.length === 0 && !isProcessing) {
     return (
       <Box flexDirection="column" flexGrow={1} paddingY={1}>
-        <Text dimColor>Welcome to RemoteClaw</Text>
+        <Text dimColor>Welcome to RemoteClaw by Opus4.5 and Joseph Kim (@jokim1)</Text>
         <Text dimColor>Type a message to start chatting.</Text>
         <Box height={1} />
         <Text dimColor>Shortcuts: ^Q Model  ^N New Session  ^L Clear  ^T Transcript  ^C Exit</Text>

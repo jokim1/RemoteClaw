@@ -4,7 +4,7 @@
  * Handles communication with remote Moltbot gateway for LLM chat
  */
 
-import type { Message } from '../types.js';
+import type { Message, RateLimitInfo } from '../types.js';
 
 export interface ChatServiceConfig {
   gatewayUrl: string;
@@ -314,6 +314,26 @@ export class ChatService {
 
       if (!response.ok) return null;
       return await response.json() as CostUsageResult;
+    } catch {
+      return null;
+    }
+  }
+
+  async getRateLimits(provider?: string): Promise<RateLimitInfo | null> {
+    try {
+      const query = provider ? `?provider=${encodeURIComponent(provider)}` : '';
+      const response = await fetch(`${this.config.gatewayUrl}/api/rate-limits${query}`, {
+        method: 'GET',
+        headers: {
+          ...(this.config.gatewayToken && {
+            'Authorization': `Bearer ${this.config.gatewayToken}`,
+          }),
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!response.ok) return null;
+      return await response.json() as RateLimitInfo;
     } catch {
       return null;
     }

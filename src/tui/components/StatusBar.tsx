@@ -6,10 +6,29 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { UsageStats, ModelStatus } from '../../types';
+import type { UsageStats, ModelStatus, RateLimitWindow } from '../../types';
 import type { TailscaleStatus } from '../../services/tailscale';
 import type { BillingOverride } from '../../config.js';
 import { getModelAlias } from '../../models.js';
+
+function formatResetTime(isoTimestamp: string): string {
+  const now = Date.now();
+  const reset = new Date(isoTimestamp).getTime();
+  const diffMs = reset - now;
+
+  if (diffMs <= 0) return 'now';
+
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${mins}m`;
+
+  const hours = Math.floor(mins / 60);
+  const remainMins = mins % 60;
+  if (hours < 24) return remainMins > 0 ? `${hours}h ${remainMins}m` : `${hours}h`;
+
+  const days = Math.floor(hours / 24);
+  const remainHours = hours % 24;
+  return remainHours > 0 ? `${days}d ${remainHours}h` : `${days}d`;
+}
 
 interface StatusBarProps {
   model: string;
@@ -39,10 +58,6 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
   const tsIcon = tailscaleStatus === 'connected' ? '●' : '○';
   const tsColor = tailscaleStatus === 'connected' ? 'green' : tailscaleStatus === 'checking' ? 'yellow' : 'red';
 
-  const hasQuota = usage.quotaUsed !== undefined && usage.quotaTotal !== undefined;
-  const quotaPercent = hasQuota ? Math.round((usage.quotaUsed! / usage.quotaTotal!) * 100) : 0;
-  const quotaRemaining = hasQuota ? usage.quotaTotal! - usage.quotaUsed! : 0;
-
   const todayCost = usage.todaySpend !== undefined ? `$${usage.todaySpend.toFixed(2)}` : '$0.00';
   const avgCost = usage.averageDailySpend !== undefined ? `$${usage.averageDailySpend.toFixed(2)}` : '$0.00';
 
@@ -60,18 +75,43 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
           <Text dimColor>M:</Text><Text color={modelColor} bold>{modelName}{modelIndicator}</Text>
 
           {isSubscription ? (
-            hasQuota ? (
-              <>
-                <Text dimColor>  {billing?.plan ?? 'Sub'} ${billing?.monthlyPrice ?? '?'}/mo  </Text>
-                <Text color={quotaPercent > 80 ? 'yellow' : undefined}>{quotaPercent}% used</Text>
-                <Text dimColor> ({quotaRemaining.toLocaleString()} left)</Text>
-              </>
-            ) : (
-              <>
-                <Text dimColor>  {billing?.plan ?? 'Sub'} </Text>
-                <Text>${billing?.monthlyPrice ?? '?'}/mo</Text>
-              </>
-            )
+            (() => {
+              const rl = usage.rateLimits;
+              const weekly = rl?.weekly;
+              const session = rl?.session;
+
+              if (weekly || session) {
+                const primary = weekly ?? session!;
+                const pct = primary.limit > 0 ? Math.round((primary.used / primary.limit) * 100) : 0;
+                const barWidth = 10;
+                const filled = Math.min(barWidth, Math.round((pct / 100) * barWidth));
+                const empty = barWidth - filled;
+                const barColor = pct > 90 ? 'red' : pct > 70 ? 'yellow' : 'green';
+                const resetLabel = formatResetTime(primary.resetsAt);
+                const windowLabel = weekly ? 'wk' : 'sess';
+
+                return (
+                  <>
+                    <Text dimColor>  {billing?.plan ?? 'Sub'}  </Text>
+                    <Text color={barColor}>{'█'.repeat(filled)}</Text>
+                    <Text dimColor>{'░'.repeat(empty)}</Text>
+                    <Text> </Text>
+                    <Text color={barColor}>{pct}% {windowLabel}</Text>
+                    {pct >= 100 ? (
+                      <Text color="red" bold>  PAUSED</Text>
+                    ) : null}
+                    <Text dimColor>  Resets {resetLabel}</Text>
+                  </>
+                );
+              }
+
+              return (
+                <>
+                  <Text dimColor>  {billing?.plan ?? 'Sub'} </Text>
+                  <Text>${billing?.monthlyPrice ?? '?'}/mo</Text>
+                </>
+              );
+            })()
           ) : (
             <>
               {hasApiCost ? (

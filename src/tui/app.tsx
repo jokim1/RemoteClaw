@@ -260,6 +260,13 @@ function App({ options }: AppProps) {
                 : prev.averageDailySpend ?? 0,
             }));
           }
+
+          // Fetch rate limits for subscription providers
+          const currentProvider = getProviderKey(currentModelRef.current);
+          const rateLimits = await chatServiceRef.current.getRateLimits(currentProvider);
+          if (rateLimits) {
+            setUsage(prev => ({ ...prev, rateLimits }));
+          }
         }
       } catch {
         setGatewayStatus('offline');

@@ -36,6 +36,19 @@ export interface SearchResult {
   matchIndex: number;
 }
 
+export interface RateLimitWindow {
+  used: number;
+  limit: number;
+  resetsAt: string; // ISO timestamp
+}
+
+export interface RateLimitInfo {
+  provider: string;
+  session?: RateLimitWindow;
+  weekly?: RateLimitWindow;
+  perModel?: Record<string, RateLimitWindow>;
+}
+
 export interface UsageStats {
   quotaUsed?: number;
   quotaTotal?: number;
@@ -46,4 +59,5 @@ export interface UsageStats {
     inputPer1M: number;
     outputPer1M: number;
   };
+  rateLimits?: RateLimitInfo;
 }
