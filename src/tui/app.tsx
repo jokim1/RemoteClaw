@@ -14,6 +14,8 @@ import { ModelPicker } from './components/ModelPicker.js';
 import type { Model } from './components/ModelPicker.js';
 import { TranscriptView } from './components/TranscriptView';
 import { ChatService } from '../services/chat';
+import { getStatus as getTailscaleStatus } from '../services/tailscale';
+import type { TailscaleStatus } from '../services/tailscale';
 import { SessionManager, getSessionManager } from '../services/sessions';
 import {
   MODEL_REGISTRY,
@@ -79,6 +81,7 @@ function App({ options }: AppProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [gatewayStatus, setGatewayStatus] = useState<'online' | 'offline' | 'connecting'>('connecting');
+  const [tailscaleStatus, setTailscaleStatus] = useState<TailscaleStatus | 'checking'>('checking');
   const [error, setError] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState('Session 1');
   const [showTranscript, setShowTranscript] = useState(false);
@@ -150,6 +153,12 @@ function App({ options }: AppProps) {
 
     const checkGatewayAndUsage = async () => {
       if (!chatServiceRef.current) return;
+
+      try {
+        setTailscaleStatus(getTailscaleStatus());
+      } catch {
+        setTailscaleStatus('not-installed');
+      }
 
       try {
         const healthy = await chatServiceRef.current.checkHealth();
@@ -397,6 +406,7 @@ function App({ options }: AppProps) {
       <Box height={3}>
         <StatusBar
           gatewayStatus={gatewayStatus}
+          tailscaleStatus={tailscaleStatus}
           model={currentModel}
           usage={usage}
           sessionName={sessionName}

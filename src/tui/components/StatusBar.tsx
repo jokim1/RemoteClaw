@@ -7,23 +7,28 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { UsageStats } from '../../types';
+import type { TailscaleStatus } from '../../services/tailscale';
 import { getModelAlias } from '../../models.js';
 
 interface StatusBarProps {
   model: string;
   usage: UsageStats;
   gatewayStatus: 'online' | 'offline' | 'connecting';
+  tailscaleStatus: TailscaleStatus | 'checking';
   sessionName?: string;
   terminalWidth?: number;
 }
 
-export function StatusBar({ model, usage, gatewayStatus, sessionName, terminalWidth = 80 }: StatusBarProps) {
+export function StatusBar({ model, usage, gatewayStatus, tailscaleStatus, sessionName, terminalWidth = 80 }: StatusBarProps) {
   const modelName = getModelAlias(model);
 
   const isAnthropicModel = model.startsWith('anthropic/');
 
   const gateway = gatewayStatus === 'online' ? '●' : gatewayStatus === 'connecting' ? '◐' : '○';
   const gatewayColor = gatewayStatus === 'online' ? 'green' : gatewayStatus === 'connecting' ? 'yellow' : 'red';
+
+  const tsIcon = tailscaleStatus === 'connected' ? '●' : '○';
+  const tsColor = tailscaleStatus === 'connected' ? 'green' : tailscaleStatus === 'checking' ? 'yellow' : 'red';
 
   const hasQuota = usage.quotaUsed !== undefined && usage.quotaTotal !== undefined;
   const quotaPercent = hasQuota ? Math.round((usage.quotaUsed! / usage.quotaTotal!) * 100) : 0;
@@ -42,6 +47,7 @@ export function StatusBar({ model, usage, gatewayStatus, sessionName, terminalWi
       <Box paddingX={1} justifyContent="space-between">
         <Box>
           <Text color={gatewayColor}>{gateway} </Text>
+          <Text dimColor>TS:</Text><Text color={tsColor}>{tsIcon} </Text>
           <Text color="cyan" bold>{modelName}</Text>
 
           {isAnthropicModel ? (

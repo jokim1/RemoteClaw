@@ -9,6 +9,7 @@
 import { Command } from 'commander';
 import { loadConfig, saveConfig, resolveGatewayConfig, getConfigPath } from './config.js';
 import { ChatService } from './services/chat.js';
+import { getStatus as getTailscaleStatus } from './services/tailscale.js';
 import { launchRemoteClaw } from './tui/app.js';
 
 const program = new Command();
@@ -46,13 +47,29 @@ program
 
     const healthy = await chatService.checkHealth();
     if (!healthy) {
+      const tsStatus = getTailscaleStatus();
+
       console.error(`\nCannot reach gateway at ${resolved.gatewayUrl}\n`);
-      console.error('Troubleshooting:');
-      console.error('  1. Is the Moltbot gateway running on the remote machine?');
-      console.error('  2. Is Tailscale connected? (run: tailscale status)');
-      console.error(`  3. Can you reach the gateway? (run: curl ${resolved.gatewayUrl}/health)`);
+
+      switch (tsStatus) {
+        case 'not-installed':
+          console.error('Tailscale is not installed. Install it with: brew install tailscale');
+          break;
+        case 'not-running':
+          console.error('Tailscale daemon is not running. Start it with: brew services start tailscale');
+          break;
+        case 'logged-out':
+          console.error('Tailscale is not authenticated. Run: tailscale up');
+          break;
+        case 'connected':
+          console.error(`Tailscale is connected but the gateway is unreachable at ${resolved.gatewayUrl}`);
+          console.error(`  - Is the Moltbot gateway running on the remote machine?`);
+          console.error(`  - Can you reach it? curl ${resolved.gatewayUrl}/health`);
+          break;
+      }
+
       if (!resolved.gatewayToken) {
-        console.error('  4. Do you need an auth token? (run: remoteclaw config --token <token>)');
+        console.error('\nDo you need an auth token? Run: remoteclaw config --token <token>');
       }
       console.error(`\nConfig file: ${getConfigPath()}`);
       console.error('Set gateway:  remoteclaw config --gateway <url>');
