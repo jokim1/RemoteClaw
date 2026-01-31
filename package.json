@@ -1,0 +1,32 @@
+{
+  "name": "@joekim/remoteclaw",
+  "version": "0.1.0",
+  "description": "Remote LLM chat TUI for Moltbot gateway",
+  "main": "dist/cli.js",
+  "types": "dist/cli.d.ts",
+  "bin": {
+    "remoteclaw": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js"
+  },
+  "keywords": ["moltbot", "terminal", "tui", "ai", "llm", "remote"],
+  "author": "Joseph Kim",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.0.0",
+    "ink": "^3.2.0",
+    "ink-text-input": "^4.0.3",
+    "react": "^17.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

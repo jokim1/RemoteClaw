@@ -1,0 +1,231 @@
+/**
+ * Session Manager
+ *
+ * Handles session persistence, multi-session support, and context recovery
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import type { Message, Session } from '../types';
+
+const SESSIONS_DIR = path.join(process.env.HOME || '~', '.remoteclaw', 'sessions');
+
+export class SessionManager {
+  private sessions: Map<string, Session> = new Map();
+  private activeSessionId: string | null = null;
+
+  constructor() {
+    this.ensureSessionsDir();
+    this.loadSessions();
+  }
+
+  private ensureSessionsDir(): void {
+    if (!fs.existsSync(SESSIONS_DIR)) {
+      fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+    }
+  }
+
+  private loadSessions(): void {
+    try {
+      const dirs = fs.readdirSync(SESSIONS_DIR);
+      for (const dir of dirs) {
+        const sessionPath = path.join(SESSIONS_DIR, dir);
+        const metaPath = path.join(sessionPath, 'metadata.json');
+
+        if (fs.existsSync(metaPath)) {
+          try {
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+            const transcriptPath = path.join(sessionPath, 'transcript.jsonl');
+            const messages: Message[] = [];
+
+            if (fs.existsSync(transcriptPath)) {
+              const lines = fs.readFileSync(transcriptPath, 'utf-8').split('\n').filter(Boolean);
+              for (const line of lines) {
+                try {
+                  messages.push(JSON.parse(line));
+                } catch {
+                  // Skip invalid lines
+                }
+              }
+            }
+
+            const session: Session = {
+              id: dir,
+              name: meta.name || dir,
+              model: meta.model || 'deepseek/deepseek-chat',
+              messages,
+              createdAt: meta.createdAt || Date.now(),
+              updatedAt: meta.updatedAt || Date.now(),
+            };
+
+            this.sessions.set(dir, session);
+          } catch {
+            // Skip corrupted sessions
+          }
+        }
+      }
+    } catch {
+      // Sessions dir might not exist yet
+    }
+  }
+
+  createSession(name?: string, model?: string): Session {
+    const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const session: Session = {
+      id,
+      name: name || `Session ${this.sessions.size + 1}`,
+      model: model || 'deepseek/deepseek-chat',
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    this.sessions.set(id, session);
+    this.saveSession(session);
+    this.activeSessionId = id;
+
+    return session;
+  }
+
+  getActiveSession(): Session {
+    if (this.activeSessionId && this.sessions.has(this.activeSessionId)) {
+      return this.sessions.get(this.activeSessionId)!;
+    }
+
+    const sessions = this.listSessions();
+    if (sessions.length > 0) {
+      this.activeSessionId = sessions[0].id;
+      return sessions[0];
+    }
+
+    return this.createSession();
+  }
+
+  setActiveSession(sessionId: string): Session | null {
+    if (this.sessions.has(sessionId)) {
+      this.activeSessionId = sessionId;
+      return this.sessions.get(sessionId)!;
+    }
+    return null;
+  }
+
+  listSessions(): Session[] {
+    return Array.from(this.sessions.values())
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  addMessage(message: Message): void {
+    const session = this.getActiveSession();
+    session.messages.push(message);
+    session.updatedAt = Date.now();
+    this.appendTranscript(session.id, message);
+    this.saveSessionMeta(session);
+  }
+
+  setSessionModel(model: string): void {
+    const session = this.getActiveSession();
+    session.model = model;
+    session.updatedAt = Date.now();
+    this.saveSessionMeta(session);
+  }
+
+  clearActiveSession(): void {
+    const session = this.getActiveSession();
+    session.messages = [];
+    session.updatedAt = Date.now();
+
+    const transcriptPath = path.join(SESSIONS_DIR, session.id, 'transcript.jsonl');
+    fs.writeFileSync(transcriptPath, '');
+
+    this.saveSessionMeta(session);
+  }
+
+  deleteSession(sessionId: string): boolean {
+    if (!this.sessions.has(sessionId)) return false;
+
+    const sessionPath = path.join(SESSIONS_DIR, sessionId);
+    try {
+      fs.rmSync(sessionPath, { recursive: true });
+    } catch {
+      // Ignore errors
+    }
+
+    this.sessions.delete(sessionId);
+    if (this.activeSessionId === sessionId) {
+      this.activeSessionId = null;
+    }
+
+    return true;
+  }
+
+  renameSession(sessionId: string, newName: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+
+    session.name = newName;
+    session.updatedAt = Date.now();
+    this.saveSessionMeta(session);
+
+    return true;
+  }
+
+  getContextSummary(maxMessages = 10): string {
+    const session = this.getActiveSession();
+    const recentMessages = session.messages.slice(-maxMessages);
+
+    if (recentMessages.length === 0) return '';
+
+    const summary = recentMessages
+      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 200)}${m.content.length > 200 ? '...' : ''}`)
+      .join('\n\n');
+
+    return `Previous conversation summary:\n\n${summary}`;
+  }
+
+  private saveSession(session: Session): void {
+    const sessionPath = path.join(SESSIONS_DIR, session.id);
+
+    if (!fs.existsSync(sessionPath)) {
+      fs.mkdirSync(sessionPath, { recursive: true });
+    }
+
+    this.saveSessionMeta(session);
+
+    const transcriptPath = path.join(sessionPath, 'transcript.jsonl');
+    const lines = session.messages.map(m => JSON.stringify(m)).join('\n');
+    fs.writeFileSync(transcriptPath, lines + (lines ? '\n' : ''));
+  }
+
+  private saveSessionMeta(session: Session): void {
+    const sessionPath = path.join(SESSIONS_DIR, session.id);
+
+    if (!fs.existsSync(sessionPath)) {
+      fs.mkdirSync(sessionPath, { recursive: true });
+    }
+
+    const metaPath = path.join(sessionPath, 'metadata.json');
+    const meta = {
+      name: session.name,
+      model: session.model,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      messageCount: session.messages.length,
+    };
+
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+  }
+
+  private appendTranscript(sessionId: string, message: Message): void {
+    const transcriptPath = path.join(SESSIONS_DIR, sessionId, 'transcript.jsonl');
+    fs.appendFileSync(transcriptPath, JSON.stringify(message) + '\n');
+  }
+}
+
+let sessionManager: SessionManager | null = null;
+
+export function getSessionManager(): SessionManager {
+  if (!sessionManager) {
+    sessionManager = new SessionManager();
+  }
+  return sessionManager;
+}

@@ -1,0 +1,148 @@
+/**
+ * Chat View Component
+ *
+ * Displays conversation history with proper overflow handling
+ */
+
+import React, { useMemo } from 'react';
+import { Box, Text } from 'ink';
+import type { Message } from '../../types';
+import { getModelAlias } from '../../models.js';
+
+interface ChatViewProps {
+  messages: Message[];
+  isProcessing: boolean;
+  streamingContent?: string;
+  modelAlias?: string;
+  maxHeight?: number;
+  terminalWidth?: number;
+}
+
+function estimateMessageLines(content: string, width: number): number {
+  if (!content) return 3;
+
+  const usableWidth = Math.max(15, Math.floor(width * 0.5));
+  const paragraphs = content.split('\n');
+  let contentLines = 0;
+
+  for (const para of paragraphs) {
+    if (!para.trim()) {
+      contentLines += 1;
+      continue;
+    }
+
+    const words = para.split(/\s+/);
+    let currentLineLength = 0;
+    let paraLines = 1;
+
+    for (const word of words) {
+      const wordLength = word.length;
+
+      if (wordLength > usableWidth) {
+        const wordWraps = Math.ceil(wordLength / usableWidth);
+        paraLines += wordWraps - 1;
+        currentLineLength = wordLength % usableWidth || usableWidth;
+      } else if (currentLineLength + wordLength + 1 > usableWidth) {
+        paraLines++;
+        currentLineLength = wordLength;
+      } else {
+        currentLineLength += wordLength + 1;
+      }
+    }
+
+    contentLines += paraLines;
+  }
+
+  return 1 + contentLines + 2;
+}
+
+export function ChatView({ messages, isProcessing, streamingContent, modelAlias, maxHeight = 20, terminalWidth = 80 }: ChatViewProps) {
+  const currentAiName = modelAlias || 'AI';
+
+  const visibleMessages = useMemo(() => {
+    if (!maxHeight || maxHeight < 5) return messages.slice(-3);
+
+    let totalLines = 0;
+    const processingLines = isProcessing ? 3 : 0;
+    totalLines += processingLines;
+
+    const reservedForIndicator = 1;
+    const availableHeight = maxHeight - reservedForIndicator;
+
+    const result: Message[] = [];
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      const msgLines = estimateMessageLines(msg.content, terminalWidth);
+
+      if (totalLines + msgLines > availableHeight) {
+        break;
+      }
+
+      totalLines += msgLines;
+      result.unshift(msg);
+    }
+
+    return result;
+  }, [messages, maxHeight, terminalWidth, isProcessing]);
+
+  if (messages.length === 0 && !isProcessing) {
+    return (
+      <Box flexDirection="column" flexGrow={1} paddingY={1}>
+        <Text dimColor>Welcome to RemoteClaw</Text>
+        <Text dimColor>Type a message to start chatting.</Text>
+        <Box height={1} />
+        <Text dimColor>Shortcuts: ^Q Model  ^N New Session  ^L Clear  ^T Transcript  ^C Exit</Text>
+      </Box>
+    );
+  }
+
+  const hiddenCount = messages.length - visibleMessages.length;
+
+  return (
+    <Box flexDirection="column" height={maxHeight} justifyContent="flex-end">
+      {hiddenCount > 0 && (
+        <Box>
+          <Text dimColor>... {hiddenCount} earlier message{hiddenCount > 1 ? 's' : ''} ...</Text>
+        </Box>
+      )}
+
+      {visibleMessages.map((msg) => {
+        const speakerName = msg.role === 'user'
+          ? 'You'
+          : msg.role === 'system'
+            ? 'System'
+            : getModelAlias(msg.model ?? '');
+        const speakerColor = msg.role === 'user' ? 'green' : msg.role === 'system' ? 'yellow' : 'cyan';
+
+        return (
+          <Box key={msg.id} marginY={0} flexDirection="column">
+            <Box>
+              <Text color={speakerColor} bold>
+                {speakerName}:
+              </Text>
+            </Box>
+            <Box paddingLeft={2} marginBottom={1}>
+              <Text wrap="wrap">{msg.content || ' '}</Text>
+            </Box>
+          </Box>
+        );
+      })}
+
+      {isProcessing && (
+        <Box flexDirection="column">
+          <Box>
+            <Text color="cyan" bold>{currentAiName}:</Text>
+          </Box>
+          <Box paddingLeft={2}>
+            {streamingContent && streamingContent.length > 0 ? (
+              <Text wrap="wrap">{streamingContent}<Text color="cyan">▌</Text></Text>
+            ) : (
+              <Text color="gray">thinking...</Text>
+            )}
+          </Box>
+        </Box>
+      )}
+    </Box>
+  );
+}

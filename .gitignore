@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.remoteclaw/
