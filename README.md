@@ -192,16 +192,18 @@ sudo pacman -S sox
 
 1. Press **Ctrl+V** to start recording (status bar shows `V:● REC`)
 2. Press **Ctrl+V** again to stop and send for transcription
-3. Transcribed text appears in your input field — edit it or press Enter to send
+3. Transcribed text is sent immediately (auto-send is on by default)
 4. When the assistant responds, the response is automatically spoken aloud
 
 Press **Escape** at any time to cancel recording or stop playback.
 
+If voice isn't available, **Ctrl+V** shows a diagnostic explaining why (SoX not installed, gateway unreachable, no STT provider configured, etc.).
+
 ### Voice config
 
 ```bash
-# Auto-submit transcribed text without editing
-remoteclaw config --voice-auto-send
+# Disable auto-send to edit transcribed text before sending (auto-send is on by default)
+remoteclaw config --no-voice-auto-send
 
 # Disable auto-play of responses (on by default)
 remoteclaw config --no-voice-auto-play
@@ -210,7 +212,7 @@ remoteclaw config --no-voice-auto-play
 remoteclaw config --voice-tts-voice nova
 ```
 
-If SoX isn't installed or the gateway doesn't support voice, voice features are silently hidden — everything else works normally.
+If SoX isn't installed or the gateway doesn't support voice, pressing Ctrl+V shows a diagnostic message explaining what's needed.
 
 ## Billing configuration
 
@@ -228,6 +230,20 @@ remoteclaw config --show
 ```
 
 Format: `provider:mode[:plan[:price]]`
+
+## Anthropic rate limits
+
+Rate limit data is normally fetched from the gateway. If the gateway can't provide it (e.g. OAuth scope error), RemoteClaw can fetch rate limits directly from Anthropic's API as a fallback:
+
+```bash
+# Set via config
+remoteclaw config --anthropic-key sk-ant-...
+
+# Or via environment variable
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+When configured, RemoteClaw makes a minimal probe request (`max_tokens: 1`) to Anthropic's `/v1/messages` endpoint and reads the `anthropic-ratelimit-*` response headers. This only triggers for Anthropic models and only when the gateway doesn't return rate limit data.
 
 ## Configuration
 
@@ -247,17 +263,18 @@ All config is stored in `~/.remoteclaw/config.json`:
     }
   },
   "voice": {
-    "autoSend": false,
+    "autoSend": true,
     "autoPlay": true,
     "ttsVoice": "nova",
     "ttsSpeed": 1.0
-  }
+  },
+  "anthropicApiKey": "sk-ant-..."
 }
 ```
 
 Resolution priority: CLI flags > environment variables > config file > defaults.
 
-Environment variables: `REMOTECLAW_GATEWAY_URL`, `REMOTECLAW_GATEWAY_TOKEN`.
+Environment variables: `REMOTECLAW_GATEWAY_URL`, `REMOTECLAW_GATEWAY_TOKEN`, `ANTHROPIC_API_KEY`.
 
 Session transcripts are stored in `~/.remoteclaw/sessions/`.
 
@@ -271,6 +288,7 @@ Options:
   -t, --token <token>       Auth token
   -m, --model <model>       Model to use
   -s, --session <name>      Resume or create a named session
+  --anthropic-key <key>     Anthropic API key (for direct rate limit fetching)
   --voice-auto-send         Auto-submit voice transcriptions
   --voice-auto-play         Auto-play assistant responses (default: true)
   --no-voice-auto-play      Disable auto-play
@@ -301,6 +319,7 @@ src/
 │   ├── chat.ts               # Gateway API client
 │   ├── sessions.ts           # Session persistence
 │   ├── voice.ts              # Voice recording, transcription, playback
+│   ├── anthropic-ratelimit.ts # Direct Anthropic rate limit fetching
 │   ├── tailscale.ts          # Tailscale status detection
 │   └── terminal.ts           # Terminal window spawning
 └── tui/
