@@ -58,6 +58,14 @@ export function formatRelativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+export function formatSessionTime(ts: number): string {
+  const date = new Date(ts);
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'short' });
+  const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${dayOfWeek} ${dateStr} ${time}`;
+}
+
 export function exportTranscript(messages: Message[], sessionName: string): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `transcript-${sessionName.replace(/\s+/g, '-')}-${timestamp}.txt`;

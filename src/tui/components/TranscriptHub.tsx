@@ -9,7 +9,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import type { Message, Session, SearchResult } from '../../types';
 import type { SessionManager } from '../../services/sessions';
-import { formatRelativeTime, exportTranscript, estimateMessageLines } from '../utils.js';
+import { formatRelativeTime, formatSessionTime, exportTranscript, estimateMessageLines } from '../utils.js';
 
 type HubMode = 'list' | 'transcript' | 'search';
 
@@ -281,10 +281,7 @@ export function TranscriptHub({
 
     return (
       <Box flexDirection="column" paddingX={1}>
-        <Box justifyContent="space-between">
-          <Text bold color="cyan">Transcript History</Text>
-          <Text dimColor>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</Text>
-        </Box>
+        <Text bold color="cyan">Transcript History</Text>
         <Box height={1} />
 
         {sessions.length === 0 ? (
@@ -296,11 +293,11 @@ export function TranscriptHub({
               const actualIndex = listScrollOffset + i;
               const isSelected = actualIndex === selectedSessionIndex;
               const isActive = session.id === activeSessionId;
-              const msgCount = session.messages.length;
-              const relTime = formatRelativeTime(session.updatedAt);
+              const msgCount = isActive ? currentMessages.length : session.messages.length;
+              const sessionTime = formatSessionTime(session.createdAt);
 
               return (
-                <Box key={session.id} justifyContent="space-between">
+                <Box key={session.id}>
                   <Text color={isSelected ? 'cyan' : undefined}>
                     {isSelected ? '> ' : '  '}
                     <Text color={isActive ? 'green' : undefined}>
@@ -309,9 +306,8 @@ export function TranscriptHub({
                     <Text bold={isSelected}>
                       {session.name}
                     </Text>
-                    <Text dimColor> ({msgCount} msg{msgCount !== 1 ? 's' : ''})</Text>
+                    <Text dimColor> ({msgCount} msg{msgCount !== 1 ? 's' : ''}) | {sessionTime}</Text>
                   </Text>
-                  <Text dimColor>{relTime}</Text>
                 </Box>
               );
             })}

@@ -152,6 +152,7 @@ function App({ options }: AppProps) {
 
     let session;
     if (options.sessionName) {
+      // Resume a named session if it exists, otherwise create it
       const existing = sessionManagerRef.current.listSessions().find(s => s.name === options.sessionName);
       if (existing) {
         session = sessionManagerRef.current.setActiveSession(existing.id) || sessionManagerRef.current.getActiveSession();
@@ -159,7 +160,8 @@ function App({ options }: AppProps) {
         session = sessionManagerRef.current.createSession(options.sessionName, options.model);
       }
     } else {
-      session = sessionManagerRef.current.getActiveSession();
+      // Always create a new session per launch so transcript history accumulates
+      session = sessionManagerRef.current.createSession(undefined, options.model);
     }
 
     setMessages(session.messages);
