@@ -112,7 +112,11 @@ function App({ options }: AppProps) {
   const gateway = useGateway(
     chatServiceRef, voiceServiceRef, anthropicRLRef, currentModelRef,
     {
-      onInitialProbe: (model) => probeCurrentModel(model),
+      onInitialProbe: (model) => {
+        // Skip if a probe was already triggered (e.g., by switchModel)
+        if (modelStatus !== 'unknown') return;
+        probeCurrentModel(model);
+      },
       onBillingDiscovered: (billing) => {
         setSavedConfig(prev => ({
           ...prev,
