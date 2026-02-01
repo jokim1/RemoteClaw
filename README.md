@@ -7,7 +7,7 @@ Remote into your Moltbot from your terminal on your Mac/PC/whatever. Switch betw
 Built with React + [Ink](https://github.com/vadimdemedes/ink) by [Claude Opus 4.5](https://anthropic.com) and [Joseph Kim](https://github.com/jokim1).
 
 ```
-GW:● TS:● M:Deep  V:●  $0.14/$0.28  Today $0.42  Wk $2.17  ~Mo $9  Sess $0.03  🎤  Session 3
+GW:● TS:● M:Deep  V:●  $0.14/$0.28  Today $0.42  Wk $2.17  ~Mo $9  Sess $0.03  Mic:●  Session 3
 ──────────────────────────────────────────────────────────────────────────────────────────────────
 You:
   explain quicksort in one sentence
@@ -188,7 +188,7 @@ Models not in this list are auto-discovered from the gateway at runtime.
 ## Status bar
 
 ```
-GW:● TS:● M:Deep  V:●  $0.14/$0.28  Today $1.23  Wk $8.61  ~Mo $37  Sess $0.08  🎤  Session 1
+GW:● TS:● M:Deep  V:●  $0.14/$0.28  Today $1.23  Wk $8.61  ~Mo $37  Sess $0.08  Mic:●  Session 1
 ```
 
 | Indicator | Meaning |
@@ -197,7 +197,7 @@ GW:● TS:● M:Deep  V:●  $0.14/$0.28  Today $1.23  Wk $8.61  ~Mo $37  Sess $
 | `TS:●` | Tailscale: green = connected, yellow = checking, red = not running |
 | `M:Deep` | Model: green = verified, yellow = checking, red = error |
 | `V:●` | Voice: green = ready, red = recording, yellow = processing, magenta = playing |
-| `🎤` | Mic readiness: green = ready, yellow = checking, red = unavailable |
+| `Mic:●` | Mic readiness: green = ready, yellow = checking, red = unavailable |
 
 ### Billing display
 

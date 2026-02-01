@@ -220,8 +220,12 @@ export class VoiceService implements IVoiceService {
         sumSquares += sample * sample;
       }
       const rms = Math.sqrt(sumSquares / sampleCount);
-      // Scale so normal speech (~3000-8000 RMS) maps to ~50-70%
-      return Math.min(100, Math.round((rms / 32768) * 300));
+      // Use dB scale (like a real audio meter) — linear amplitude is
+      // perceptually wrong because speech RMS is only ~3-10% of 16-bit max.
+      // Map -50 dBFS → 0%, 0 dBFS → 100%
+      if (rms < 1) return 0;
+      const dBFS = 20 * Math.log10(rms / 32768);
+      return Math.min(100, Math.max(0, Math.round((dBFS + 50) * 2)));
     } catch {
       return 0;
     }
