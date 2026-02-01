@@ -6,6 +6,7 @@
 
 import { randomUUID } from 'crypto';
 import type { Message, RateLimitInfo } from '../types.js';
+import type { IChatService } from './interfaces.js';
 import {
   CHAT_TIMEOUT_MS,
   HEALTH_CHECK_TIMEOUT_MS,
@@ -15,6 +16,16 @@ import {
   RATE_LIMIT_TIMEOUT_MS,
   PROVIDER_LIST_TIMEOUT_MS,
 } from '../constants.js';
+import {
+  validateChatResponse,
+  validateSSEChunk,
+  validateModelList,
+  validateProbeResponse,
+  validateToolResult,
+  validateCostUsage,
+  validateRateLimits,
+  validateProviders,
+} from './validation.js';
 
 export interface ChatServiceConfig {
   gatewayUrl: string;
@@ -46,7 +57,7 @@ function parseModelError(status: number, body: string, model: string): string {
   return `Unexpected error (${status}): ${body.slice(0, 120)}`;
 }
 
-export class ChatService {
+export class ChatService implements IChatService {
   private config: ChatServiceConfig;
   private sessionKey: string;
   lastResponseModel: string | undefined;
@@ -106,15 +117,9 @@ export class ChatService {
       throw new Error(`Gateway error (${response.status}): ${error}`);
     }
 
-    const data = await response.json() as {
-      choices?: Array<{ message?: { content?: string } }>;
-      model?: string;
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_tokens?: number;
-      };
-    };
+    const raw = await response.json();
+    const data = validateChatResponse(raw);
+    if (!data) throw new Error('Invalid chat completion response');
 
     return {
       content: data.choices?.[0]?.message?.content ?? '',
@@ -168,14 +173,15 @@ export class ChatService {
           if (data === '[DONE]') return;
 
           try {
-            const parsed = JSON.parse(data);
+            const parsed = validateSSEChunk(JSON.parse(data));
+            if (!parsed) continue;
             if (!this.lastResponseModel && parsed.model) {
               this.lastResponseModel = parsed.model;
             }
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) yield content;
-          } catch {
-            // Skip invalid SSE JSON chunks
+          } catch (err) {
+            console.debug('SSE parse error (expected for partial chunks):', err);
           }
         }
       }
@@ -189,7 +195,8 @@ export class ChatService {
         signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
       });
       return response.ok;
-    } catch {
+    } catch (err) {
+      console.debug('Health check failed:', err);
       return false;
     }
   }
@@ -204,12 +211,10 @@ export class ChatService {
 
       if (!response.ok) return null;
 
-      const data = await response.json() as {
-        data?: Array<{ id: string }>;
-      };
-
-      return data.data?.map(m => m.id) ?? null;
-    } catch {
+      const data = validateModelList(await response.json());
+      return data?.data?.map(m => m.id) ?? null;
+    } catch (err) {
+      console.debug('listModels failed:', err);
       return null;
     }
   }
@@ -241,8 +246,8 @@ export class ChatService {
         return { ok: false, code: response.status, reason: parseModelError(response.status, body, targetModel) };
       }
 
-      const data = await response.json() as { model?: string };
-      const actualModel = data.model;
+      const data = validateProbeResponse(await response.json());
+      const actualModel = data?.model;
 
       if (actualModel && actualModel !== targetModel) {
         return {
@@ -292,9 +297,10 @@ export class ChatService {
       });
 
       if (!response.ok) return false;
-      const result = await response.json() as { ok?: boolean };
-      return result.ok === true;
-    } catch {
+      const result = validateToolResult(await response.json());
+      return result?.ok === true;
+    } catch (err) {
+      console.debug('setModelOverride failed:', err);
       return false;
     }
   }
@@ -308,8 +314,9 @@ export class ChatService {
       });
 
       if (!response.ok) return null;
-      return await response.json() as CostUsageResult;
-    } catch {
+      return validateCostUsage(await response.json()) as CostUsageResult | null;
+    } catch (err) {
+      console.debug('getCostUsage failed:', err);
       return null;
     }
   }
@@ -324,8 +331,9 @@ export class ChatService {
       });
 
       if (!response.ok) return null;
-      return await response.json() as RateLimitInfo;
-    } catch {
+      return validateRateLimits(await response.json()) as RateLimitInfo | null;
+    } catch (err) {
+      console.debug('getRateLimits failed:', err);
       return null;
     }
   }
@@ -340,9 +348,10 @@ export class ChatService {
 
       if (!response.ok) return null;
 
-      const data = await response.json() as { providers?: ProviderInfo[] };
-      return data.providers ?? null;
-    } catch {
+      const data = validateProviders(await response.json());
+      return (data?.providers as ProviderInfo[] | undefined) ?? null;
+    } catch (err) {
+      console.debug('getProviders failed:', err);
       return null;
     }
   }

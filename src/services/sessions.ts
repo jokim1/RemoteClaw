@@ -1,13 +1,16 @@
 /**
  * Session Manager
  *
- * Handles session persistence, multi-session support, and context recovery
+ * Handles session persistence, multi-session support, and context recovery.
+ * Write operations use async I/O (fire-and-forget) to avoid blocking the event loop.
  */
 
 import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { Message, Session, SearchResult } from '../types';
+import type { ISessionManager } from './interfaces.js';
 import { DEFAULT_MODEL } from '../constants.js';
 
 /** Validate that a session ID is safe for use as a directory name. */
@@ -17,7 +20,7 @@ function isValidSessionId(id: string): boolean {
 
 export const SESSIONS_DIR = path.join(process.env.HOME || '~', '.remoteclaw', 'sessions');
 
-export class SessionManager {
+export class SessionManager implements ISessionManager {
   private sessions: Map<string, Session> = new Map();
   private activeSessionId: string | null = null;
 
@@ -51,14 +54,14 @@ export class SessionManager {
               for (const line of lines) {
                 try {
                   messages.push(JSON.parse(line));
-                } catch {
-                  // Skip invalid lines
+                } catch (err) {
+                  console.debug('Skipping invalid transcript line:', err);
                 }
               }
             }
 
             if (messages.length === 0) {
-              try { fs.rmSync(sessionPath, { recursive: true }); } catch {}
+              fsp.rm(sessionPath, { recursive: true }).catch(() => {});
               continue;
             }
 
@@ -72,13 +75,13 @@ export class SessionManager {
             };
 
             this.sessions.set(dir, session);
-          } catch {
-            // Skip corrupted sessions
+          } catch (err) {
+            console.debug('Skipping corrupted session:', dir, err);
           }
         }
       }
-    } catch {
-      // Sessions dir might not exist yet
+    } catch (err) {
+      console.debug('Sessions directory not readable:', err);
     }
   }
 
@@ -131,15 +134,15 @@ export class SessionManager {
     const session = this.getActiveSession();
     session.messages.push(message);
     session.updatedAt = Date.now();
-    this.appendTranscript(session.id, message);
-    this.saveSessionMeta(session);
+    this.persistTranscript(session.id, message);
+    this.persistSessionMeta(session);
   }
 
   setSessionModel(model: string): void {
     const session = this.getActiveSession();
     session.model = model;
     session.updatedAt = Date.now();
-    this.saveSessionMeta(session);
+    this.persistSessionMeta(session);
   }
 
   clearActiveSession(): void {
@@ -148,9 +151,9 @@ export class SessionManager {
     session.updatedAt = Date.now();
 
     const transcriptPath = path.join(SESSIONS_DIR, session.id, 'transcript.jsonl');
-    fs.writeFileSync(transcriptPath, '');
+    fsp.writeFile(transcriptPath, '').catch(() => {});
 
-    this.saveSessionMeta(session);
+    this.persistSessionMeta(session);
   }
 
   deleteSession(sessionId: string): boolean {
@@ -161,11 +164,7 @@ export class SessionManager {
     const resolved = path.resolve(sessionPath);
     if (!resolved.startsWith(path.resolve(SESSIONS_DIR))) return false;
 
-    try {
-      fs.rmSync(sessionPath, { recursive: true });
-    } catch {
-      // Ignore errors
-    }
+    fsp.rm(sessionPath, { recursive: true }).catch(() => {});
 
     this.sessions.delete(sessionId);
     if (this.activeSessionId === sessionId) {
@@ -181,7 +180,7 @@ export class SessionManager {
 
     session.name = newName;
     session.updatedAt = Date.now();
-    this.saveSessionMeta(session);
+    this.persistSessionMeta(session);
 
     return true;
   }
@@ -242,32 +241,32 @@ export class SessionManager {
     return `Previous conversation summary:\n\n${summary}`;
   }
 
-  private saveSessionMeta(session: Session): void {
+  /** Persist session metadata to disk (async, fire-and-forget). */
+  private persistSessionMeta(session: Session): void {
     const sessionPath = path.join(SESSIONS_DIR, session.id);
-
-    if (!fs.existsSync(sessionPath)) {
-      fs.mkdirSync(sessionPath, { recursive: true });
-    }
-
     const metaPath = path.join(sessionPath, 'metadata.json');
-    const meta = {
+    const meta = JSON.stringify({
       name: session.name,
       model: session.model,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       messageCount: session.messages.length,
-    };
+    }, null, 2);
 
-    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+    fsp.mkdir(sessionPath, { recursive: true })
+      .then(() => fsp.writeFile(metaPath, meta))
+      .catch(() => {});
   }
 
-  private appendTranscript(sessionId: string, message: Message): void {
+  /** Append a message to the session transcript (async, fire-and-forget). */
+  private persistTranscript(sessionId: string, message: Message): void {
     const sessionPath = path.join(SESSIONS_DIR, sessionId);
-    if (!fs.existsSync(sessionPath)) {
-      fs.mkdirSync(sessionPath, { recursive: true });
-    }
     const transcriptPath = path.join(sessionPath, 'transcript.jsonl');
-    fs.appendFileSync(transcriptPath, JSON.stringify(message) + '\n');
+    const line = JSON.stringify(message) + '\n';
+
+    fsp.mkdir(sessionPath, { recursive: true })
+      .then(() => fsp.appendFile(transcriptPath, line))
+      .catch(() => {});
   }
 }
 

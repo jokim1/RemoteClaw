@@ -5,6 +5,8 @@
  * communication with moltbot gateway voice endpoints for STT/TTS.
  */
 
+import type { IVoiceService } from './interfaces.js';
+import { validateVoiceCapabilities, validateTranscription } from './validation.js';
 import { spawn, execSync } from 'child_process';
 import type { ChildProcess } from 'child_process';
 import * as fs from 'fs';
@@ -43,7 +45,7 @@ export interface VoiceServiceConfig {
 
 // --- Service ---
 
-export class VoiceService {
+export class VoiceService implements IVoiceService {
   private config: VoiceServiceConfig;
   private soxAvailable: boolean | null = null;
   private capabilities: VoiceCapabilities | null = null;
@@ -66,7 +68,8 @@ export class VoiceService {
       execSync('which sox', { timeout: 3000, stdio: 'pipe' });
       execSync('which rec', { timeout: 3000, stdio: 'pipe' });
       this.soxAvailable = true;
-    } catch {
+    } catch (err) {
+      console.debug('SoX not found:', err);
       this.soxAvailable = false;
     }
     return this.soxAvailable;
@@ -88,9 +91,12 @@ export class VoiceService {
       });
 
       if (!response.ok) return null;
-      this.capabilities = await response.json() as VoiceCapabilities;
+      const raw = validateVoiceCapabilities(await response.json());
+      if (!raw) return null;
+      this.capabilities = raw as VoiceCapabilities;
       return this.capabilities;
-    } catch {
+    } catch (err) {
+      console.debug('Voice capability fetch failed:', err);
       return null;
     }
   }
@@ -212,7 +218,9 @@ export class VoiceService {
       throw new Error(`Transcription failed (${response.status}): ${body.slice(0, 120)}`);
     }
 
-    return await response.json() as TranscriptionResult;
+    const result = validateTranscription(await response.json());
+    if (!result) throw new Error('Invalid transcription response');
+    return result as TranscriptionResult;
   }
 
   // --- Synthesis (TTS) ---
@@ -308,8 +316,8 @@ export class VoiceService {
     for (const f of this.tempFiles) {
       try {
         if (fs.existsSync(f)) fs.unlinkSync(f);
-      } catch {
-        // Ignore cleanup errors
+      } catch (err) {
+        console.debug('Temp file cleanup failed:', err);
       }
     }
     this.tempFiles = [];

@@ -53,7 +53,8 @@ export class AnthropicRateLimitService {
           resetsAt,
         },
       };
-    } catch {
+    } catch (err) {
+      console.debug('Anthropic rate limit fetch failed:', err);
       return null;
     }
   }

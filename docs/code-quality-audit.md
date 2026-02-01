@@ -10,38 +10,38 @@
 
 | # | Category | Severity | File | Description | Status |
 |---|---|---|---|---|---|
-| 1 | SRP | SHOULD-FIX | app.tsx | God component with 20+ state variables and 726 lines | OPEN |
+| 1 | SRP | SHOULD-FIX | app.tsx | God component with 20+ state variables and 726 lines | FIXED |
 | 2 | SRP | NICE-TO-HAVE | chat.ts | ChatService mixes HTTP transport with 10 operations | OPEN |
 | 3 | SRP | NICE-TO-HAVE | TranscriptHub.tsx | Three modes in one component | OPEN |
-| 4 | OCP | SHOULD-FIX | app.tsx | Slash commands not extensible | OPEN |
+| 4 | OCP | SHOULD-FIX | app.tsx | Slash commands not extensible | FIXED |
 | 5 | OCP | SHOULD-FIX | app.tsx | `isNoReply` sentinel check is fragile and inline | FIXED |
 | 6 | ISP | NICE-TO-HAVE | StatusBar.tsx | 10-prop interface too broad | OPEN |
-| 7 | DIP | SHOULD-FIX | app.tsx | No service interfaces; concrete classes only | OPEN |
+| 7 | DIP | SHOULD-FIX | app.tsx | No service interfaces; concrete classes only | FIXED |
 | 8 | DIP | NICE-TO-HAVE | sessions.ts | Direct fs coupling, no storage abstraction | OPEN |
 | 9 | Pattern | SHOULD-FIX | chat.ts, voice.ts | No Gateway Client abstraction; auth headers repeated 11x | FIXED |
 | 10 | Pattern | NICE-TO-HAVE | sessions.ts | Module-level singleton pattern | OPEN |
 | 11 | Pattern | NICE-TO-HAVE | app.tsx | Voice state machine would be clearer | OPEN |
 | 12 | Pattern | NICE-TO-HAVE | app.tsx | Rate limit strategy chain | OPEN |
-| 13 | Complexity | SHOULD-FIX | app.tsx | 4-level nesting in voice handler | OPEN |
-| 14 | Complexity | SHOULD-FIX | app.tsx | 4-level nesting in gateway/voice init | OPEN |
+| 13 | Complexity | SHOULD-FIX | app.tsx | 4-level nesting in voice handler | FIXED |
+| 14 | Complexity | SHOULD-FIX | app.tsx | 4-level nesting in gateway/voice init | FIXED |
 | 15 | Complexity | NICE-TO-HAVE | StatusBar.tsx | IIFE in JSX for rate limit rendering | OPEN |
 | 16 | Duplication | SHOULD-FIX | chat.ts, voice.ts | Auth header construction repeated 11 times | FIXED |
-| 17 | Duplication | SHOULD-FIX | app.tsx | Message construction repeated 6 times | OPEN |
+| 17 | Duplication | SHOULD-FIX | app.tsx | Message construction repeated 6 times | FIXED |
 | 18 | Duplication | SHOULD-FIX | chat.ts | History mapping duplicated in send/stream | FIXED |
-| 19 | Duplication | SHOULD-FIX | app.tsx | `setInputText` cleanup hack repeated 6 times | OPEN |
+| 19 | Duplication | SHOULD-FIX | app.tsx | `setInputText` cleanup hack repeated 6 times | FIXED |
 | 20 | Maintainability | SHOULD-FIX | Multiple | 20+ magic numbers without named constants | FIXED |
 | 21 | Maintainability | SHOULD-FIX | app.tsx, sessions.ts | Default model string repeated in 3 places | FIXED |
 | 22 | Naming | NICE-TO-HAVE | Multiple | Inconsistent export styles (class vs functions) | OPEN |
 | 23 | Naming | NICE-TO-HAVE | app.tsx | Terse variable names (`p`) | OPEN |
 | 24 | Scalability | NICE-TO-HAVE | models.ts | Static model registry (mitigated by dynamic discovery) | OPEN |
 | 25 | Scalability | NICE-TO-HAVE | app.tsx | No plugin/hook architecture for new features | OPEN |
-| 26 | Scalability | SHOULD-FIX | sessions.ts | Synchronous I/O blocks event loop; loads all data at startup | OPEN |
+| 26 | Scalability | SHOULD-FIX | sessions.ts | Synchronous I/O blocks event loop; loads all data at startup | FIXED |
 | 27 | Reusability | NICE-TO-HAVE | components/ | Components import domain-specific types | OPEN |
-| 28 | Error Handling | SHOULD-FIX | Multiple | 14 bare catch blocks swallow errors silently | OPEN |
+| 28 | Error Handling | SHOULD-FIX | Multiple | 14 bare catch blocks swallow errors silently | FIXED |
 | 29 | Error Handling | NICE-TO-HAVE | app.tsx | Gateway errors not differentiated to user | OPEN |
 | 30 | Error Handling | NICE-TO-HAVE | app.tsx | `probeModel` promise has no `.catch()` | OPEN |
 | 31 | Error Handling | NICE-TO-HAVE | app.tsx | Error state never auto-clears | OPEN |
-| 32 | TypeScript | SHOULD-FIX | chat.ts, voice.ts | API responses cast with `as` without runtime validation | OPEN |
+| 32 | TypeScript | SHOULD-FIX | chat.ts, voice.ts | API responses cast with `as` without runtime validation | FIXED |
 | 33 | TypeScript | NICE-TO-HAVE | sessions.ts, config.ts | `JSON.parse` returns untyped `any` | OPEN |
 | 34 | TypeScript | NICE-TO-HAVE | chat.ts | SSE `parsed` is implicitly `any` | OPEN |
 | 35 | TypeScript | NICE-TO-HAVE | chat.ts | No generic fetch wrapper | OPEN |
@@ -49,7 +49,7 @@
 | 37 | Dead Code | NICE-TO-HAVE | sessions.ts | `saveSession` method never called | FIXED |
 | 38 | Correctness | SHOULD-FIX | app.tsx | Hardcoded $0.01 cost per message | FIXED |
 | 39 | Memory | NICE-TO-HAVE | chat.ts | AbortSignal listeners not cleaned on error path | OPEN |
-| 40 | Correctness | NICE-TO-HAVE | app.tsx | `Date.now()` message IDs can collide | OPEN |
+| 40 | Correctness | NICE-TO-HAVE | app.tsx | `Date.now()` message IDs can collide | FIXED |
 
 ---
 

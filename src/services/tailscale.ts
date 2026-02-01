@@ -17,7 +17,8 @@ function checkInstalled(): boolean {
   try {
     execSync('which tailscale', { timeout: 3000, stdio: 'pipe' });
     return true;
-  } catch {
+  } catch (err) {
+    console.debug('tailscale not found:', err);
     return false;
   }
 }
@@ -36,7 +37,8 @@ function checkRunning(): 'connected' | 'not-running' | 'logged-out' {
       default:
         return 'not-running';
     }
-  } catch {
+  } catch (err) {
+    console.debug('tailscale status check failed:', err);
     return 'not-running';
   }
 }

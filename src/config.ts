@@ -48,8 +48,8 @@ export function loadConfig(): RemoteClawConfig {
       const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
       return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
     }
-  } catch {
-    // Ignore corrupted config
+  } catch (err) {
+    console.debug('Failed to load config:', err);
   }
   return { ...DEFAULT_CONFIG };
 }
@@ -63,7 +63,8 @@ export function saveConfig(config: RemoteClawConfig): void {
   try {
     fs.chmodSync(CONFIG_DIR, 0o700);
     fs.chmodSync(CONFIG_PATH, 0o600);
-  } catch {
+  } catch (err) {
+    console.debug('chmod failed:', err);
     process.stderr.write('Warning: could not set restrictive permissions on config file\n');
   }
 }
