@@ -48,8 +48,10 @@ export function TranscriptHub({
   const [selectedResultIndex, setSelectedResultIndex] = useState(0);
   const [searchScrollOffset, setSearchScrollOffset] = useState(0);
   const [isSearchInputActive, setIsSearchInputActive] = useState(true);
+  const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const sessions = useMemo(() => sessionManager.listSessions(), [sessionManager, mode]);
+  const sessions = useMemo(() => sessionManager.listSessions(), [sessionManager, mode, refreshKey]);
   const activeSessionId = sessionManager.getActiveSessionId();
 
   // Determine messages for transcript view
@@ -139,6 +141,20 @@ export function TranscriptHub({
     }
 
     if (mode === 'list') {
+      if (deleteConfirmSessionId) {
+        if (key.return) {
+          sessionManager.deleteSession(deleteConfirmSessionId);
+          setDeleteConfirmSessionId(null);
+          setRefreshKey(k => k + 1);
+          setSelectedSessionIndex(prev => Math.min(prev, Math.max(0, sessions.length - 2)));
+          return;
+        }
+        if (key.escape) {
+          setDeleteConfirmSessionId(null);
+          return;
+        }
+        return;
+      }
       if (key.escape) {
         onClose();
         return;
@@ -173,6 +189,12 @@ export function TranscriptHub({
         setSearchResults([]);
         setIsSearchInputActive(true);
         setMode('search');
+        return;
+      }
+      if (input === 'x' || input === 'X') {
+        if (sessions.length > 0) {
+          setDeleteConfirmSessionId(sessions[selectedSessionIndex].id);
+        }
         return;
       }
       return;
@@ -293,14 +315,15 @@ export function TranscriptHub({
               const actualIndex = listScrollOffset + i;
               const isSelected = actualIndex === selectedSessionIndex;
               const isActive = session.id === activeSessionId;
+              const isDeleting = session.id === deleteConfirmSessionId;
               const msgCount = isActive ? currentMessages.length : session.messages.length;
               const sessionTime = formatSessionTime(session.createdAt);
 
               return (
                 <Box key={session.id}>
-                  <Text color={isSelected ? 'cyan' : undefined}>
+                  <Text color={isDeleting ? 'red' : isSelected ? 'cyan' : undefined}>
                     {isSelected ? '> ' : '  '}
-                    <Text color={isActive ? 'green' : undefined}>
+                    <Text color={isDeleting ? 'red' : isActive ? 'green' : undefined}>
                       {isActive ? '\u25CF ' : '  '}
                     </Text>
                     <Text bold={isSelected}>
@@ -316,7 +339,11 @@ export function TranscriptHub({
         )}
 
         <Box height={1} />
-        <Text dimColor>  ↑↓ Navigate  Enter View  / Search  Esc Close</Text>
+        {deleteConfirmSessionId ? (
+          <Text>  <Text color="red">Delete &quot;{sessions.find(s => s.id === deleteConfirmSessionId)?.name}&quot;?</Text>  <Text dimColor>  Enter confirm  Esc cancel</Text></Text>
+        ) : (
+          <Text dimColor>  ↑↓ Navigate  Enter View  / Search  x Delete  Esc Close</Text>
+        )}
       </Box>
     );
   }

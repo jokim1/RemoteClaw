@@ -49,6 +49,11 @@ export class SessionManager {
               }
             }
 
+            if (messages.length === 0) {
+              try { fs.rmSync(sessionPath, { recursive: true }); } catch {}
+              continue;
+            }
+
             const session: Session = {
               id: dir,
               name: meta.name || dir,
@@ -81,7 +86,6 @@ export class SessionManager {
     };
 
     this.sessions.set(id, session);
-    this.saveSession(session);
     this.activeSessionId = id;
 
     return session;
@@ -111,6 +115,7 @@ export class SessionManager {
 
   listSessions(): Session[] {
     return Array.from(this.sessions.values())
+      .filter(s => s.messages.length > 0)
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
@@ -259,7 +264,11 @@ export class SessionManager {
   }
 
   private appendTranscript(sessionId: string, message: Message): void {
-    const transcriptPath = path.join(SESSIONS_DIR, sessionId, 'transcript.jsonl');
+    const sessionPath = path.join(SESSIONS_DIR, sessionId);
+    if (!fs.existsSync(sessionPath)) {
+      fs.mkdirSync(sessionPath, { recursive: true });
+    }
+    const transcriptPath = path.join(sessionPath, 'transcript.jsonl');
     fs.appendFileSync(transcriptPath, JSON.stringify(message) + '\n');
   }
 }
