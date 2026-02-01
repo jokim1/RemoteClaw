@@ -20,6 +20,7 @@ import type { TailscaleStatus } from '../services/tailscale';
 import { SessionManager, getSessionManager } from '../services/sessions';
 import { spawnNewTerminalWindow } from '../services/terminal.js';
 import { VoiceService } from '../services/voice.js';
+import { AnthropicRateLimitService } from '../services/anthropic-ratelimit.js';
 import { loadConfig, getBillingForProvider } from '../config.js';
 import type { BillingOverride } from '../config.js';
 import {
@@ -81,6 +82,7 @@ function App({ options }: AppProps) {
   const chatServiceRef = useRef<ChatService | null>(null);
   const sessionManagerRef = useRef<SessionManager | null>(null);
   const voiceServiceRef = useRef<VoiceService | null>(null);
+  const anthropicRLRef = useRef<AnthropicRateLimitService | null>(null);
 
   // State
   const [currentModel, setCurrentModel] = useState(options.model ?? 'deepseek/deepseek-chat');
@@ -111,7 +113,7 @@ function App({ options }: AppProps) {
   // Voice state
   const [voiceState, setVoiceState] = useState<VoiceState>({
     mode: 'idle',
-    enabled: false,
+    readiness: 'checking',
     sttAvailable: false,
     ttsAvailable: false,
     autoSend: savedConfig.voice?.autoSend ?? false,
@@ -166,6 +168,10 @@ function App({ options }: AppProps) {
       gatewayUrl: options.gatewayUrl,
       gatewayToken: options.gatewayToken,
     });
+
+    if (options.anthropicApiKey) {
+      anthropicRLRef.current = new AnthropicRateLimitService(options.anthropicApiKey);
+    }
 
     sessionManagerRef.current = getSessionManager();
 
@@ -271,17 +277,28 @@ function App({ options }: AppProps) {
           }
 
           if (!voiceChecked) {
-            voiceChecked = true;
             const soxOk = voiceServiceRef.current?.checkSoxInstalled() ?? false;
-            if (soxOk) {
+            if (!soxOk) {
+              setVoiceState(prev => ({ ...prev, readiness: 'no-sox' }));
+            } else {
               const caps = await voiceServiceRef.current?.fetchCapabilities();
-              if (caps) {
+              if (!caps) {
+                setVoiceState(prev => ({ ...prev, readiness: 'no-gateway' }));
+              } else if (!caps.stt.available) {
                 setVoiceState(prev => ({
                   ...prev,
-                  enabled: caps.stt.available || caps.tts.available,
+                  readiness: 'no-stt',
+                  ttsAvailable: caps.tts.available,
+                }));
+                voiceChecked = true; // STT explicitly unavailable, stop retrying
+              } else {
+                setVoiceState(prev => ({
+                  ...prev,
+                  readiness: 'ready',
                   sttAvailable: caps.stt.available,
                   ttsAvailable: caps.tts.available,
                 }));
+                voiceChecked = true; // All good, stop retrying
               }
             }
           }
@@ -306,7 +323,14 @@ function App({ options }: AppProps) {
 
           // Fetch rate limits for subscription providers
           const currentProvider = getProviderKey(currentModelRef.current);
-          const rateLimits = await chatServiceRef.current.getRateLimits(currentProvider);
+          let rateLimits = await chatServiceRef.current.getRateLimits(currentProvider);
+
+          // Fallback: fetch directly from Anthropic API if gateway didn't return data
+          if (!rateLimits && currentProvider === 'anthropic' && anthropicRLRef.current) {
+            const bareModel = currentModelRef.current.replace(/^anthropic\//, '');
+            rateLimits = await anthropicRLRef.current.fetchRateLimits(bareModel);
+          }
+
           if (rateLimits) {
             setUsage(prev => ({ ...prev, rateLimits }));
           }
@@ -397,10 +421,29 @@ function App({ options }: AppProps) {
     }
 
     if (input === 'v' && key.ctrl) {
-      if (!voiceStateRef.current.enabled || !voiceStateRef.current.sttAvailable) return;
       if (isProcessing) return;
 
-      const mode = voiceStateRef.current.mode;
+      const vs = voiceStateRef.current;
+
+      // Show diagnostic if voice isn't ready
+      if (vs.readiness !== 'ready') {
+        const hint = vs.readiness === 'checking'
+          ? 'Voice is still initializing, try again in a moment.'
+          : vs.readiness === 'no-sox'
+          ? 'Voice requires SoX. Install with: brew install sox (macOS) or apt install sox (Linux)'
+          : vs.readiness === 'no-gateway'
+          ? 'Voice not available — gateway did not respond to /api/voice/capabilities. Is the RemoteClawGateway plugin installed?'
+          : vs.readiness === 'no-stt'
+          ? 'Voice not available — gateway has no speech-to-text provider configured. Set OPENAI_API_KEY on the gateway server.'
+          : 'Voice is not available.';
+        setError(hint);
+        setTimeout(() => {
+          setInputText(prev => prev.replace(/v/g, ''));
+        }, 10);
+        return;
+      }
+
+      const mode = vs.mode;
 
       if (mode === 'idle') {
         // Start recording
@@ -663,7 +706,7 @@ function App({ options }: AppProps) {
           sessionName={sessionName}
           terminalWidth={terminalWidth}
           voiceMode={voiceState.mode}
-          voiceEnabled={voiceState.enabled}
+          voiceReadiness={voiceState.readiness}
         />
       </Box>
 
@@ -718,7 +761,7 @@ function App({ options }: AppProps) {
       </Box>
 
       <Box height={2}>
-        <ShortcutBar terminalWidth={terminalWidth} voiceEnabled={voiceState.enabled} />
+        <ShortcutBar terminalWidth={terminalWidth} />
       </Box>
     </Box>
   );

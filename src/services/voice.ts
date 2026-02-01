@@ -60,7 +60,8 @@ export class VoiceService {
   // --- Sox detection ---
 
   checkSoxInstalled(): boolean {
-    if (this.soxAvailable !== null) return this.soxAvailable;
+    // Only cache positive results — retry on failure so installing sox mid-session works
+    if (this.soxAvailable === true) return true;
     try {
       execSync('which sox', { timeout: 3000, stdio: 'pipe' });
       execSync('which rec', { timeout: 3000, stdio: 'pipe' });
