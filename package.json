@@ -1,5 +1,5 @@
 {
-  "name": "@joekim/remoteclaw",
+  "name": "@jokim1/remoteclaw",
   "version": "0.1.0",
   "description": "Remote LLM chat TUI for Moltbot gateway",
   "main": "dist/cli.js",

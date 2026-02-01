@@ -49,7 +49,7 @@ Deep:
 ## Install
 
 ```bash
-npm install -g @joekim/remoteclaw
+npm install -g @jokim1/remoteclaw
 ```
 
 Or clone and build from source:
