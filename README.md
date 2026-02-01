@@ -68,15 +68,9 @@ RemoteClaw uses [Tailscale](https://tailscale.com) to securely connect your loca
 
 **On your local machine (where you'll run RemoteClaw):**
 
-1. Install Tailscale:
-   ```bash
-   # macOS
-   brew install tailscale
-   # Then start the service:
-   brew services start tailscale
+1. Install Tailscale — download directly from the website: https://tailscale.com/download
 
-   # Or download from: https://tailscale.com/download
-   ```
+   > **macOS note:** The [website download](https://tailscale.com/download) is the most reliable option. The Mac App Store version and `brew install tailscale` can have issues with the system network extension and daemon management. The website version installs both the menu bar app and the CLI tools.
 2. Log in with the same Tailscale account:
    ```bash
    tailscale up
