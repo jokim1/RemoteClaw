@@ -60,18 +60,18 @@ export function InputArea({
     return (
       <Box flexDirection="column">
         {/* Live transcripts */}
-        {userTranscript && (
+        {userTranscript ? (
           <Box paddingX={1}>
             <Text color="green" bold>You: </Text>
             <Text color="green">{userTranscript}</Text>
           </Box>
-        )}
-        {aiTranscript && (
+        ) : null}
+        {aiTranscript ? (
           <Box paddingX={1}>
             <Text color="cyan" bold>AI: </Text>
             <Text color="cyan">{aiTranscript}</Text>
           </Box>
-        )}
+        ) : null}
         {/* Status bar */}
         <Box paddingX={1}>
           <Text color={dotColor}>● </Text>
