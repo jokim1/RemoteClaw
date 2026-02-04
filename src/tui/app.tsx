@@ -41,7 +41,6 @@ import { useGateway } from './hooks/useGateway.js';
 import { useChat } from './hooks/useChat.js';
 import { useVoice } from './hooks/useVoice.js';
 import { useRealtimeVoice } from './hooks/useRealtimeVoice.js';
-import { writeMessageToScrollback } from './messageWriter.js';
 
 interface AppProps {
   options: RemoteClawOptions;
@@ -182,21 +181,6 @@ function App({ options }: AppProps) {
     }
     prevMessageCountRef.current = chat.messages.length;
   }, [chat.messages.length]);
-
-  // Write completed messages to terminal scrollback
-  // This allows user to scroll up in terminal to see history
-  const writtenMessageCountRef = useRef(0);
-  useEffect(() => {
-    // Only write when not processing (so we don't write partial messages)
-    if (chat.isProcessing) return;
-
-    // Write any new messages to scrollback
-    const newMessages = chat.messages.slice(writtenMessageCountRef.current);
-    for (const msg of newMessages) {
-      writeMessageToScrollback(msg);
-    }
-    writtenMessageCountRef.current = chat.messages.length;
-  }, [chat.messages, chat.isProcessing]);
 
   // --- Service initialization ---
 
@@ -758,23 +742,19 @@ function App({ options }: AppProps) {
 }
 
 export async function launchRemoteClaw(options: RemoteClawOptions): Promise<void> {
-  // Hybrid approach:
-  // - Messages are written directly to terminal scrollback (user can scroll up)
-  // - Ink only manages the bottom area (streaming, input)
-  // - No alternate screen buffer so scrollback is accessible
+  // Use alternate screen buffer for clean, stable TUI
+  // User can view message history via ^H History
   const stdout = process.stdout;
-
-  // Suppress console.debug to prevent scrollback pollution
-  const originalDebug = console.debug;
-  console.debug = () => {};
+  stdout.write('\x1b[?1049h'); // Enter alternate screen buffer
+  stdout.write('\x1b[H');      // Move cursor to home
 
   const { waitUntilExit } = render(<App options={options} />, { exitOnCtrlC: false });
 
   try {
     await waitUntilExit();
   } finally {
-    // Restore console and cursor
-    console.debug = originalDebug;
-    stdout.write('\x1b[?25h'); // Show cursor
+    // Restore terminal state
+    stdout.write('\x1b[?25h');   // Show cursor
+    stdout.write('\x1b[?1049l'); // Exit alternate screen buffer
   }
 }
