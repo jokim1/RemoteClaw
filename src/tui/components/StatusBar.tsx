@@ -71,8 +71,8 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
     : null;
 
   return (
-    <Box flexDirection="column" width="100%">
-      <Box paddingX={1} justifyContent="space-between">
+    <Box flexDirection="column" width="100%" height={3}>
+      <Box height={2} paddingX={1} justifyContent="space-between">
         <Box>
           <Text dimColor>GW:</Text><Text color={gatewayColor}>{gateway} </Text>
           <Text dimColor>TS:</Text><Text color={tsColor}>{tsIcon} </Text>
@@ -172,7 +172,7 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
         </Box>
       </Box>
 
-      <Box>
+      <Box height={1}>
         <Text dimColor>{'─'.repeat(Math.max(1, terminalWidth))}</Text>
       </Box>
     </Box>
