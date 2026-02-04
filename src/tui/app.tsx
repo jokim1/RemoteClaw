@@ -570,7 +570,8 @@ function App({ options }: AppProps) {
   const inputHeight = Math.max(1, Math.ceil((inputText.length + 1) / availableInputWidth));
 
   // Account for terminalHeight - 1 in the outer container (to prevent Ink overflow)
-  const chatHeight = Math.max(3, (terminalHeight - 1) - headerHeight - inputSeparatorHeight - inputHeight - shortcutBarHeight - errorHeight);
+  const queuedHeight = messageQueue.length;
+  const chatHeight = Math.max(3, (terminalHeight - 1) - headerHeight - inputSeparatorHeight - inputHeight - queuedHeight - shortcutBarHeight - errorHeight);
   const layoutKey = `${terminalWidth}x${terminalHeight}-${resizeKey}`;
 
   // --- Render ---
@@ -705,7 +706,7 @@ function App({ options }: AppProps) {
         <Text dimColor>{'─'.repeat(terminalWidth)}</Text>
       </Box>
 
-      <Box height={inputHeight} flexShrink={0} paddingX={1}>
+      <Box height={inputHeight + messageQueue.length} flexShrink={0} paddingX={1}>
         <InputArea
           value={inputText}
           onChange={setInputText}
@@ -718,6 +719,7 @@ function App({ options }: AppProps) {
           realtimeState={realtimeVoice.state}
           userTranscript={realtimeVoice.userTranscript}
           aiTranscript={realtimeVoice.aiTranscript}
+          queuedMessages={messageQueue}
         />
       </Box>
 

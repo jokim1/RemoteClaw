@@ -22,6 +22,8 @@ interface InputAreaProps {
   realtimeState?: RealtimeVoiceState;
   userTranscript?: string;
   aiTranscript?: string;
+  // Message queue
+  queuedMessages?: string[];
 }
 
 function VolumeMeter({ level }: { level: number }) {
@@ -51,6 +53,7 @@ export function InputArea({
   realtimeState,
   userTranscript,
   aiTranscript,
+  queuedMessages = [],
 }: InputAreaProps) {
   // Realtime live chat mode with transcripts
   if (voiceMode === 'liveChat') {
@@ -131,6 +134,17 @@ export function InputArea({
 
   return (
     <Box paddingX={1} flexDirection="column">
+      {/* Show queued messages */}
+      {queuedMessages.length > 0 && (
+        <Box flexDirection="column" marginBottom={0}>
+          {queuedMessages.map((msg, idx) => (
+            <Box key={idx}>
+              <Text dimColor>queued: </Text>
+              <Text color="gray">{msg.length > 60 ? msg.slice(0, 60) + '...' : msg}</Text>
+            </Box>
+          ))}
+        </Box>
+      )}
       <Box>
         <Text color={promptColor}>{promptSymbol} </Text>
         <MultiLineInput
@@ -141,11 +155,6 @@ export function InputArea({
           isActive={isActive}
         />
       </Box>
-      {disabled && (
-        <Box paddingLeft={2}>
-          <Text dimColor>(AI is responding... your message will be queued)</Text>
-        </Box>
-      )}
     </Box>
   );
 }
