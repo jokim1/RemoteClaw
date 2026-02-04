@@ -31,10 +31,40 @@ const READINESS_HINTS: Record<string, string> = {
 
 const VOLUME_POLL_MS = 150;
 
+import * as fs from 'fs';
+import * as path from 'path';
+
+const TTS_PREF_PATH = path.join(process.env.HOME || '~', '.remoteclaw', 'tts_enabled');
+
+// Load ttsEnabled preference from file (persists across sessions)
+function loadTtsEnabled(): boolean {
+  try {
+    if (fs.existsSync(TTS_PREF_PATH)) {
+      const saved = fs.readFileSync(TTS_PREF_PATH, 'utf-8').trim();
+      return saved !== 'false';
+    }
+    return true; // Default to enabled
+  } catch {
+    return true;
+  }
+}
+
+function saveTtsEnabled(enabled: boolean): void {
+  try {
+    const dir = path.dirname(TTS_PREF_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+    fs.writeFileSync(TTS_PREF_PATH, String(enabled));
+  } catch {
+    // Ignore file errors
+  }
+}
+
 export function useVoice(opts: UseVoiceOpts) {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('idle');
   const [volumeLevel, setVolumeLevel] = useState(0);
-  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [ttsEnabled, setTtsEnabled] = useState(loadTtsEnabled);
   const voiceModeRef = useRef(voiceMode);
   voiceModeRef.current = voiceMode;
 
@@ -176,7 +206,9 @@ export function useVoice(opts: UseVoiceOpts) {
         optsRef.current.voiceServiceRef.current?.stopPlayback();
         setVoiceMode('idle');
       }
-      return !prev;
+      const newValue = !prev;
+      saveTtsEnabled(newValue); // Persist preference
+      return newValue;
     });
   }, []);
 
