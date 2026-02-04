@@ -137,10 +137,10 @@ export function ChatView({
   const hasUserInput = messages.some(m => m.role === 'user');
   if (!hasUserInput && !isProcessing) {
     return (
-      <Box flexDirection="column" flexGrow={1} paddingY={1}>
+      <Box flexDirection="column" flexGrow={1}>
         <Text dimColor>Welcome to RemoteClaw by Opus4.5 and Joseph Kim (@jokim1)</Text>
         <Text dimColor>Type a message to start chatting.</Text>
-        <Box height={1} />
+        <Text> </Text>
         <Text dimColor>Additional Shortcuts: ^A Change AI Model  ^N New Terminal</Text>
         <Text dimColor>Scroll: ↑/↓ arrows, Page Up/Down, g/G for top/bottom</Text>
       </Box>
