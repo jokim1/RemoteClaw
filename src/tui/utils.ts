@@ -7,7 +7,7 @@ import * as path from 'path';
 import type { Message } from '../types';
 
 export function estimateMessageLines(content: string, width: number): number {
-  if (!content) return 3;
+  if (!content) return 2;
 
   // Account for paddingX(1) on chat area + paddingLeft(2) on message content
   const usableWidth = Math.max(15, width - 6);
@@ -42,8 +42,8 @@ export function estimateMessageLines(content: string, width: number): number {
     contentLines += paraLines;
   }
 
-  // 1 line for speaker name + content lines + 1 line for marginBottom
-  return 1 + contentLines + 1;
+  // 1 line for speaker name + content lines (be less conservative to fit more messages)
+  return 1 + contentLines;
 }
 
 export function formatRelativeTime(ts: number): string {

@@ -200,7 +200,7 @@ export function ChatView({
                 {speakerName}:
               </Text>
             </Box>
-            <Box paddingLeft={2} marginBottom={1}>
+            <Box paddingLeft={2}>
               <Text wrap="wrap">{msg.content || ' '}</Text>
             </Box>
           </Box>
