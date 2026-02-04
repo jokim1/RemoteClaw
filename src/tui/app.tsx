@@ -509,6 +509,20 @@ function App({ options }: AppProps) {
 }
 
 export async function launchRemoteClaw(options: RemoteClawOptions): Promise<void> {
+  // Enable alternate screen buffer to prevent terminal scrolling
+  // This is what vim, htop, and other full-screen TUI apps use
+  const stdout = process.stdout;
+  stdout.write('\x1b[?1049h'); // Enter alternate screen buffer
+  stdout.write('\x1b[?25l');   // Hide cursor (reduces flicker)
+  stdout.write('\x1b[H');      // Move cursor to home position
+
   const { waitUntilExit } = render(<App options={options} />, { exitOnCtrlC: false });
-  await waitUntilExit();
+
+  try {
+    await waitUntilExit();
+  } finally {
+    // Restore normal terminal state
+    stdout.write('\x1b[?25h');   // Show cursor
+    stdout.write('\x1b[?1049l'); // Exit alternate screen buffer
+  }
 }
