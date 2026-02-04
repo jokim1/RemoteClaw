@@ -139,28 +139,40 @@ export function ShortcutBar({ terminalWidth = 80, ttsEnabled = true }: ShortcutB
     { key: '^X', label: 'Exit' },
   ];
 
-  // Calculate total content width and distribute spacing evenly
-  const items = shortcuts.map(s => ({ key: s.key, label: s.label, width: s.key.length + 2 + 1 + s.label.length })); // "[^T] Label"
+  // Calculate item widths: "[^T] Label"
+  const items = shortcuts.map(s => ({
+    key: s.key,
+    label: s.label,
+    width: s.key.length + 2 + 1 + s.label.length // [key] + space + label
+  }));
   const totalContentWidth = items.reduce((sum, i) => sum + i.width, 0);
-  const numGaps = shortcuts.length + 1; // gaps on both ends and between items
-  const totalSpacing = Math.max(0, terminalWidth - totalContentWidth);
-  const gapSize = Math.floor(totalSpacing / numGaps);
-  const extraSpaces = totalSpacing - (gapSize * numGaps);
+
+  // Distribute gaps between items (not at edges) so first item is at left, last at right
+  const numGaps = shortcuts.length - 1;
+  const availableSpace = terminalWidth - totalContentWidth - 2; // -2 for 1 space padding each side
+  const gapSize = numGaps > 0 ? Math.floor(availableSpace / numGaps) : 0;
+  const extraSpaces = numGaps > 0 ? availableSpace - (gapSize * numGaps) : 0;
 
   // Build evenly distributed shortcut line
-  let shortcutLine = ' '.repeat(gapSize + (extraSpaces > 0 ? 1 : 0));
-  let extraUsed = extraSpaces > 0 ? 1 : 0;
+  let shortcutLine = ' '; // left padding
   items.forEach((item, i) => {
     shortcutLine += `[${item.key}] ${item.label}`;
     if (i < items.length - 1) {
-      const extra = extraUsed < extraSpaces ? 1 : 0;
-      if (extra) extraUsed++;
+      // Distribute extra spaces among first gaps
+      const extra = i < extraSpaces ? 1 : 0;
       shortcutLine += ' '.repeat(gapSize + extra);
     }
   });
-  // Pad to exact width
+  shortcutLine += ' '; // right padding
+
+  // Ensure exact width
   if (shortcutLine.length < terminalWidth) {
-    shortcutLine += ' '.repeat(terminalWidth - shortcutLine.length);
+    // Insert extra space before last item to push it to the right
+    const deficit = terminalWidth - shortcutLine.length;
+    const lastGapPos = shortcutLine.lastIndexOf('[^X]') - 1;
+    shortcutLine = shortcutLine.slice(0, lastGapPos) + ' '.repeat(deficit) + shortcutLine.slice(lastGapPos);
+  } else if (shortcutLine.length > terminalWidth) {
+    shortcutLine = shortcutLine.slice(0, terminalWidth);
   }
 
   const separator = '─'.repeat(terminalWidth);
