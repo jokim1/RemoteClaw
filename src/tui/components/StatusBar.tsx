@@ -44,9 +44,10 @@ interface StatusBarProps {
   terminalWidth?: number;
   voiceMode?: VoiceMode;
   voiceReadiness?: VoiceReadiness;
+  ttsEnabled?: boolean;
 }
 
-export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleStatus, billing, sessionName, terminalWidth = 80, voiceMode, voiceReadiness }: StatusBarProps) {
+export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleStatus, billing, sessionName, terminalWidth = 80, voiceMode, voiceReadiness, ttsEnabled = true }: StatusBarProps) {
   const modelName = getModelAlias(model);
 
   const modelColor: string = modelStatus === 'checking' ? 'yellow'
@@ -73,24 +74,18 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
     ? `$${usage.modelPricing!.inputPer1M}/$${usage.modelPricing!.outputPer1M}`
     : null;
 
-  const voiceStatus = voiceReadiness === 'checking' ? '◐' :
-    voiceReadiness !== 'ready' ? '○' :
-    voiceMode === 'liveTalk' ? '● LIVE' :
-    voiceMode === 'recording' ? '● REC' :
-    voiceMode === 'transcribing' ? '◐ STT' :
-    voiceMode === 'synthesizing' ? '◐ TTS' :
-    voiceMode === 'playing' ? '♪ PLAY' : '●';
-
-  const voiceColor = voiceReadiness === 'checking' ? 'yellow' :
-    voiceReadiness !== 'ready' ? 'red' :
-    voiceMode === 'liveTalk' ? 'cyan' :
-    voiceMode === 'recording' ? 'red' :
-    voiceMode === 'transcribing' || voiceMode === 'synthesizing' ? 'yellow' :
-    voiceMode === 'playing' ? 'magenta' : 'green';
-
+  // Mic indicator: shows microphone/STT readiness
   const micColor = voiceReadiness === 'ready' ? 'green' :
     voiceReadiness === 'checking' ? 'yellow' : 'red';
   const micIcon = voiceReadiness === 'ready' ? '●' : voiceReadiness === 'checking' ? '◐' : '○';
+
+  // V indicator: shows TTS/AI Voice enabled state + activity
+  // When playing/synthesizing, show activity; otherwise show on/off state
+  const isVoiceActive = voiceMode === 'playing' || voiceMode === 'synthesizing';
+  const ttsIcon = isVoiceActive ? (voiceMode === 'playing' ? '♪' : '◐') :
+    ttsEnabled ? '●' : '○';
+  const ttsColor = isVoiceActive ? (voiceMode === 'playing' ? 'magenta' : 'yellow') :
+    ttsEnabled ? 'green' : 'gray';
 
   // Build cost/billing section as plain text
   let billingText = '';
@@ -122,8 +117,8 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
     billingText = '  ' + costParts.join('  ');
   }
 
-  // Build right side content
-  const rightContent = `Mic:${micIcon}  ${sessionName ?? ''}`;
+  // Build right side content: V (TTS) and Mic indicators + session name
+  const rightContent = `V:${ttsIcon} Mic:${micIcon}  ${sessionName ?? ''}`;
   const rightLen = rightContent.length;
 
   // Calculate left content (will be truncated if needed)
@@ -131,7 +126,7 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
   const maxLeftWidth = terminalWidth - 2 - rightLen - 2;
 
   // Build the full line with padding to push right content to the edge
-  const leftContent = `GW:${gateway} TS:${tsIcon} M:${modelName}${modelIndicator}  V:${voiceStatus}${billingText}`;
+  const leftContent = `GW:${gateway} TS:${tsIcon} M:${modelName}${modelIndicator}${billingText}`;
   const leftTruncated = leftContent.length > maxLeftWidth
     ? leftContent.slice(0, maxLeftWidth - 1) + '…'
     : leftContent;
@@ -144,9 +139,9 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
         <Text dimColor>GW:</Text><Text color={gatewayColor}>{gateway} </Text>
         <Text dimColor>TS:</Text><Text color={tsColor}>{tsIcon} </Text>
         <Text dimColor>M:</Text><Text color={modelColor} bold>{modelName}{modelIndicator}</Text>
-        <Text dimColor>  V:</Text><Text color={voiceColor}>{voiceStatus}</Text>
         <Text dimColor>{billingText}</Text>
         <Text>{' '.repeat(Math.max(1, padding))}</Text>
+        <Text dimColor>V:</Text><Text color={ttsColor}>{ttsIcon} </Text>
         <Text dimColor>Mic:</Text><Text color={micColor}>{micIcon}</Text>
         <Text dimColor>  {sessionName ?? ''} </Text>
       </Box>
