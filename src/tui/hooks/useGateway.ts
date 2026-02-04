@@ -59,6 +59,11 @@ export function useGateway(
   const cbRef = useRef(callbacks);
   cbRef.current = callbacks;
 
+  // Track previous values to avoid unnecessary re-renders
+  const prevGatewayStatusRef = useRef(gatewayStatus);
+  const prevTailscaleStatusRef = useRef(tailscaleStatus);
+  const prevUsageRef = useRef({ todaySpend: 0, weeklySpend: 0, rateLimitsJson: '' });
+
   useEffect(() => {
     let modelsDiscovered = false;
     let initialProbed = false;
@@ -69,12 +74,26 @@ export function useGateway(
       const chatService = chatServiceRef.current;
       if (!chatService) return;
 
-      try { setTailscaleStatus(getTailscaleStatus()); }
-      catch { setTailscaleStatus('not-installed'); }
+      try {
+        const tsStatus = getTailscaleStatus();
+        if (tsStatus !== prevTailscaleStatusRef.current) {
+          prevTailscaleStatusRef.current = tsStatus;
+          setTailscaleStatus(tsStatus);
+        }
+      } catch {
+        if (prevTailscaleStatusRef.current !== 'not-installed') {
+          prevTailscaleStatusRef.current = 'not-installed';
+          setTailscaleStatus('not-installed');
+        }
+      }
 
       try {
         const healthy = await chatService.checkHealth();
-        setGatewayStatus(healthy ? 'online' : 'offline');
+        const newGatewayStatus = healthy ? 'online' : 'offline';
+        if (newGatewayStatus !== prevGatewayStatusRef.current) {
+          prevGatewayStatusRef.current = newGatewayStatus;
+          setGatewayStatus(newGatewayStatus);
+        }
         if (!healthy) return;
 
         if (!modelsDiscovered) {
@@ -133,20 +152,33 @@ export function useGateway(
           rateLimits = await anthropicRLRef.current.fetchRateLimits(bareModel);
         }
 
-        // Single setUsage call — one render instead of two
-        const weekTotal = weekUsage?.totals?.totalCost;
-        const dailyAvg = weekTotal ? weekTotal / 7 : undefined;
-        setUsage(prev => ({
-          ...prev,
-          todaySpend: todayUsage?.totals?.totalCost ?? prev.todaySpend ?? 0,
-          weeklySpend: weekTotal ?? prev.weeklySpend ?? 0,
-          averageDailySpend: dailyAvg ?? prev.averageDailySpend ?? 0,
-          monthlyEstimate: dailyAvg !== undefined ? dailyAvg * 30 : prev.monthlyEstimate ?? 0,
-          ...(rateLimits ? { rateLimits } : {}),
-        }));
+        // Only update usage if values have actually changed to avoid re-renders
+        const weekTotal = weekUsage?.totals?.totalCost ?? 0;
+        const todayTotal = todayUsage?.totals?.totalCost ?? 0;
+        const rateLimitsJson = rateLimits ? JSON.stringify(rateLimits) : '';
+        const hasUsageChanged =
+          todayTotal !== prevUsageRef.current.todaySpend ||
+          weekTotal !== prevUsageRef.current.weeklySpend ||
+          rateLimitsJson !== prevUsageRef.current.rateLimitsJson;
+
+        if (hasUsageChanged) {
+          prevUsageRef.current = { todaySpend: todayTotal, weeklySpend: weekTotal, rateLimitsJson };
+          const dailyAvg = weekTotal ? weekTotal / 7 : undefined;
+          setUsage(prev => ({
+            ...prev,
+            todaySpend: todayTotal || prev.todaySpend || 0,
+            weeklySpend: weekTotal || prev.weeklySpend || 0,
+            averageDailySpend: dailyAvg ?? prev.averageDailySpend ?? 0,
+            monthlyEstimate: dailyAvg !== undefined ? dailyAvg * 30 : prev.monthlyEstimate ?? 0,
+            ...(rateLimits ? { rateLimits } : {}),
+          }));
+        }
       } catch (err) {
         console.debug('Gateway poll failed:', err);
-        setGatewayStatus('offline');
+        if (prevGatewayStatusRef.current !== 'offline') {
+          prevGatewayStatusRef.current = 'offline';
+          setGatewayStatus('offline');
+        }
       }
     };
 
