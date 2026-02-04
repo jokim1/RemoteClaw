@@ -135,7 +135,7 @@ export function useVoice(opts: UseVoiceOpts) {
     const { voiceServiceRef } = optsRef.current;
     const mode = voiceModeRef.current;
 
-    if (mode === 'recording') {
+    if (mode === 'recording' || mode === 'liveTalk') {
       voiceServiceRef.current?.stopRecording();
       setVoiceMode('idle');
       return true;
@@ -173,7 +173,7 @@ export function useVoice(opts: UseVoiceOpts) {
     setTtsEnabled(prev => !prev);
   }, []);
 
-  /** Start live talk mode (real-time bidirectional voice chat). */
+  /** Start/stop live talk mode (real-time bidirectional voice chat). */
   const handleLiveTalk = useCallback(() => {
     const { voiceServiceRef, readiness, setError } = optsRef.current;
 
@@ -187,18 +187,18 @@ export function useVoice(opts: UseVoiceOpts) {
       return;
     }
 
-    // For now, live talk starts recording similar to push-to-talk
-    // Future: implement continuous listening with voice activity detection
     const mode = voiceModeRef.current;
     if (mode === 'idle') {
+      // Start live talk mode
       const result = voiceServiceRef.current.startRecording();
       if (result.ok) {
-        setVoiceMode('recording');
+        setVoiceMode('liveTalk');
         setError(null);
       } else {
         setError(result.error);
       }
-    } else if (mode === 'recording') {
+    } else if (mode === 'liveTalk') {
+      // End live talk - transcribe and send
       stopAndTranscribe();
     } else if (mode === 'playing') {
       voiceServiceRef.current?.stopPlayback();

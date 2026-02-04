@@ -83,6 +83,7 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
             <Text color={
               voiceReadiness === 'checking' ? 'yellow' :
               voiceReadiness !== 'ready' ? 'red' :
+              voiceMode === 'liveTalk' ? 'cyan' :
               voiceMode === 'recording' ? 'red' :
               voiceMode === 'transcribing' || voiceMode === 'synthesizing' ? 'yellow' :
               voiceMode === 'playing' ? 'magenta' :
@@ -90,6 +91,7 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
             }>
               {voiceReadiness === 'checking' ? '◐' :
                voiceReadiness !== 'ready' ? '○' :
+               voiceMode === 'liveTalk' ? '● LIVE' :
                voiceMode === 'recording' ? '● REC' :
                voiceMode === 'transcribing' ? '◐ STT' :
                voiceMode === 'synthesizing' ? '◐ TTS' :

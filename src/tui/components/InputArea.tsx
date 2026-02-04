@@ -34,13 +34,24 @@ function VolumeMeter({ level }: { level: number }) {
 }
 
 export function InputArea({ value, onChange, onSubmit, disabled, voiceMode, volumeLevel }: InputAreaProps) {
+  if (voiceMode === 'liveTalk') {
+    return (
+      <Box paddingX={1}>
+        <Text color="cyan">● </Text>
+        <Text color="cyan" bold>Live Talk...</Text>
+        <VolumeMeter level={volumeLevel ?? 0} />
+        <Text dimColor>  ^T to end</Text>
+      </Box>
+    );
+  }
+
   if (voiceMode === 'recording') {
     return (
       <Box paddingX={1}>
         <Text color="red">● </Text>
         <Text color="red" bold>Recording...</Text>
         <VolumeMeter level={volumeLevel ?? 0} />
-        <Text dimColor>  ^V send  Esc cancel</Text>
+        <Text dimColor>  ^P to send  Esc cancel</Text>
       </Box>
     );
   }
