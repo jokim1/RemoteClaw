@@ -455,9 +455,7 @@ function App({ options }: AppProps) {
       return;
     }
 
-    // ^C Chat (live voice mode)
-    // Note: True realtime WebSocket voice requires gateway endpoint /api/realtime-voice/stream
-    // For now, use legacy recording mode until gateway implements realtime streaming
+    // ^C Chat (realtime voice)
     if (input === 'c' && key.ctrl) {
       if (chat.isProcessing) {
         setError('Cannot start chat while processing');
@@ -465,10 +463,18 @@ function App({ options }: AppProps) {
         // End realtime session
         realtimeVoice.endSession();
       } else if (voice.voiceMode === 'liveChat') {
-        // Already in live chat mode - end it
+        // Already in legacy live chat mode - end it
         voice.handleLiveTalk?.();
+      } else if (gateway.realtimeVoiceCaps?.available) {
+        // Start realtime session via WebSocket
+        realtimeVoice.startSession().then(success => {
+          if (!success) {
+            // Fall back to legacy recording mode
+            voice.handleLiveTalk?.();
+          }
+        });
       } else {
-        // Start live chat mode (legacy recording mode for now)
+        // No realtime available, use legacy recording mode
         voice.handleLiveTalk?.();
       }
       cleanInputChar(setInputText, 'c');
