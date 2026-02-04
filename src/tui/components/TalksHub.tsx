@@ -151,11 +151,11 @@ export function TalksHub({
             const session = sessionManager.getSession(talk.sessionId);
             const msgCount = session?.messages.length ?? 0;
 
-            // Display: Topic Title OR (date/time + first line preview)
-            let displayText: React.ReactNode;
+            // Rename mode renders differently (TextInput can't be inside Text)
             if (isRenaming) {
-              displayText = (
-                <Box>
+              return (
+                <Box key={talk.id}>
+                  <Text color="cyan">{isSelected ? '> ' : '  '}</Text>
                   <Text>Topic: </Text>
                   <TextInput
                     value={renameValue}
@@ -171,27 +171,30 @@ export function TalksHub({
                   />
                 </Box>
               );
-            } else if (talk.topicTitle) {
-              displayText = (
-                <Text bold={isSelected}>{talk.topicTitle}</Text>
-              );
-            } else {
-              const sessionTime = formatSessionTime(talk.createdAt);
-              const preview = getPreview(talk);
-              displayText = (
-                <>
-                  <Text dimColor>{sessionTime}</Text>
-                  <Text> </Text>
-                  <Text>{preview}</Text>
-                </>
+            }
+
+            // Normal display: Topic Title OR (date/time + first line preview)
+            if (talk.topicTitle) {
+              return (
+                <Box key={talk.id}>
+                  <Text color={isSelected ? 'cyan' : undefined}>
+                    {isSelected ? '> ' : '  '}
+                    <Text bold={isSelected}>{talk.topicTitle}</Text>
+                    <Text dimColor> ({msgCount} msg{msgCount !== 1 ? 's' : ''})</Text>
+                  </Text>
+                </Box>
               );
             }
 
+            const sessionTime = formatSessionTime(talk.createdAt);
+            const preview = getPreview(talk);
             return (
               <Box key={talk.id}>
                 <Text color={isSelected ? 'cyan' : undefined}>
                   {isSelected ? '> ' : '  '}
-                  {displayText}
+                  <Text dimColor>{sessionTime}</Text>
+                  <Text> </Text>
+                  <Text>{preview}</Text>
                   <Text dimColor> ({msgCount} msg{msgCount !== 1 ? 's' : ''})</Text>
                 </Text>
               </Box>
