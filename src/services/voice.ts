@@ -135,6 +135,8 @@ export class VoiceService implements IVoiceService {
     return this.recordingProcess !== null;
   }
 
+  private recordingError: string | null = null;
+
   startRecording(): { ok: true; tempPath: string } | { ok: false; error: string } {
     if (this.recordingProcess) {
       return { ok: false, error: 'Already recording' };
@@ -146,9 +148,10 @@ export class VoiceService implements IVoiceService {
 
     const tempPath = path.join(os.tmpdir(), `remoteclaw-voice-${Date.now()}.wav`);
     this.tempFiles.push(tempPath);
+    this.recordingError = null;
 
     const proc = spawn('rec', [
-      '-q',           // quiet
+      '-q',           // quiet (suppress progress output)
       '-r', '16000',  // 16kHz
       '-c', '1',      // mono
       '-b', '16',     // 16-bit
@@ -164,9 +167,40 @@ export class VoiceService implements IVoiceService {
       stderrOutput += chunk.toString();
     });
 
-    proc.on('error', () => {
+    proc.on('error', (err) => {
+      this.recordingError = err.message;
       this.recordingProcess = null;
       this.recordingPath = null;
+    });
+
+    // Detect early exit (e.g., mic permission denied, no audio device)
+    // If rec exits within the first second, it's likely a failure
+    const startTime = Date.now();
+    proc.on('close', (code) => {
+      if (this.recordingProcess === proc) {
+        const elapsed = Date.now() - startTime;
+        // Process exited while we thought we were still recording
+        if (code !== 0) {
+          // Filter out warnings, look for actual errors
+          const errorLines = stderrOutput.split('\n')
+            .filter(line => !line.includes('WARN') && line.trim())
+            .join('\n').trim();
+          this.recordingError = errorLines || `Recording failed (exit code ${code})`;
+        } else if (elapsed < 1000) {
+          // Process exited too quickly with success - might be a silent failure
+          // Check if file exists and has content
+          try {
+            const stat = fs.statSync(tempPath);
+            if (stat.size < 100) {
+              this.recordingError = 'No audio captured. Check microphone permissions in System Preferences → Privacy & Security → Microphone.';
+            }
+          } catch {
+            this.recordingError = 'Recording failed - no audio file created. Check microphone permissions.';
+          }
+        }
+        this.recordingProcess = null;
+        this.recordingPath = null;
+      }
     });
 
     this.recordingProcess = proc;
@@ -174,6 +208,11 @@ export class VoiceService implements IVoiceService {
     this.recordingStartTime = Date.now();
 
     return { ok: true, tempPath };
+  }
+
+  /** Check if recording failed after starting (e.g., mic permission denied). */
+  getRecordingError(): string | null {
+    return this.recordingError;
   }
 
   stopRecording(): { ok: true; tempPath: string; durationMs: number } | { ok: false; error: string } {

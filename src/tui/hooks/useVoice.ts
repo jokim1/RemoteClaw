@@ -40,14 +40,22 @@ export function useVoice(opts: UseVoiceOpts) {
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
-  // Poll volume level during recording
+  // Poll volume level during recording, and detect early recording failure
   useEffect(() => {
     if (voiceMode !== 'recording') {
       setVolumeLevel(0);
       return;
     }
     const interval = setInterval(() => {
-      const level = optsRef.current.voiceServiceRef.current?.getRecordingLevel() ?? 0;
+      const voiceService = optsRef.current.voiceServiceRef.current;
+      // Check if recording failed after starting (e.g., mic permission denied)
+      const recordingError = voiceService?.getRecordingError?.();
+      if (recordingError) {
+        setVoiceMode('idle');
+        optsRef.current.setError(recordingError);
+        return;
+      }
+      const level = voiceService?.getRecordingLevel() ?? 0;
       setVolumeLevel(level);
     }, VOLUME_POLL_MS);
     return () => clearInterval(interval);

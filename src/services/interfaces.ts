@@ -37,6 +37,8 @@ export interface IVoiceService {
   fetchCapabilities(): Promise<VoiceCapabilities | null>;
   startRecording(): { ok: true; tempPath: string } | { ok: false; error: string };
   stopRecording(): { ok: true; tempPath: string; durationMs: number } | { ok: false; error: string };
+  getRecordingLevel(): number;
+  getRecordingError(): string | null;
   transcribe(audioPath: string): Promise<TranscriptionResult>;
   synthesize(text: string, voice?: string, speed?: number): Promise<string>;
   playAudio(audioPath: string): Promise<void>;

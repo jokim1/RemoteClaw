@@ -17,8 +17,8 @@ interface ChatViewProps {
   modelAlias?: string;
   maxHeight?: number;
   terminalWidth?: number;
-  scrollOffset: number;
-  onScroll: (offset: number) => void;
+  scrollOffset?: number;
+  onScroll?: (offset: number) => void;
   isActive?: boolean;
 }
 
@@ -29,7 +29,7 @@ export function ChatView({
   modelAlias,
   maxHeight = 20,
   terminalWidth = 80,
-  scrollOffset,
+  scrollOffset = 0,
   onScroll,
   isActive = true,
 }: ChatViewProps) {
@@ -55,7 +55,7 @@ export function ChatView({
 
   // Handle keyboard input for scrolling
   useInput((input, key) => {
-    if (!isActive) return;
+    if (!isActive || !onScroll) return;
 
     if (key.upArrow) {
       onScroll(Math.min(scrollOffset + 1, maxScrollOffset));

@@ -329,6 +329,10 @@ export class ChatService implements IChatService {
     this.config.model = model;
   }
 
+  getModel(): string | undefined {
+    return this.config.model;
+  }
+
   async setModelOverride(model: string): Promise<boolean> {
     try {
       const response = await fetch(`${this.config.gatewayUrl}/tools/invoke`, {
