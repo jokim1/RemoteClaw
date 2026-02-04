@@ -1,15 +1,15 @@
 /**
  * Chat View Component
  *
- * Displays conversation history using Ink's Static component for terminal scrollback.
- * Completed messages go into terminal scrollback (scroll up to see full history).
- * Only the current streaming response stays in the dynamic area.
+ * Displays conversation history with scrolling support.
+ * Shows all messages - use arrow keys/Page Up/Down to scroll.
  */
 
-import React, { useRef, useEffect } from 'react';
-import { Box, Text, Static } from 'ink';
+import React, { useMemo } from 'react';
+import { Box, Text, useInput } from 'ink';
 import type { Message } from '../../types';
 import { getModelAlias } from '../../models.js';
+import { estimateMessageLines } from '../utils.js';
 
 interface ChatViewProps {
   messages: Message[];
@@ -23,54 +23,115 @@ interface ChatViewProps {
   isActive?: boolean;
 }
 
-/** Render a single message */
-function MessageItem({ msg }: { msg: Message }) {
-  const speakerName = msg.role === 'user'
-    ? 'You'
-    : msg.role === 'system'
-      ? 'System'
-      : getModelAlias(msg.model ?? '');
-  const speakerColor = msg.role === 'user' ? 'green' : msg.role === 'system' ? 'yellow' : 'cyan';
-
-  return (
-    <Box marginY={0} flexDirection="column">
-      <Box>
-        <Text color={speakerColor} bold>
-          {speakerName}:
-        </Text>
-      </Box>
-      <Box paddingLeft={2} marginBottom={1}>
-        <Text wrap="wrap">{msg.content || ' '}</Text>
-      </Box>
-    </Box>
-  );
-}
-
 export function ChatView({
   messages,
   isProcessing,
   streamingContent,
   modelAlias,
   maxHeight = 20,
+  terminalWidth = 80,
+  scrollOffset = 0,
+  onScroll,
+  isActive = true,
 }: ChatViewProps) {
   const currentAiName = modelAlias || 'AI';
 
-  // Track which messages have been rendered to Static (by ID)
-  const renderedIdsRef = useRef<Set<string>>(new Set());
+  // Calculate line info for all messages
+  const messageLineInfo = useMemo(() => {
+    return messages.map(msg => ({
+      msg,
+      lines: estimateMessageLines(msg.content, terminalWidth),
+    }));
+  }, [messages, terminalWidth]);
 
-  // Determine which messages are "completed" and should go to Static
-  // All messages except the very last one during streaming
-  const completedMessages = isProcessing ? messages : messages;
+  // Total content height
+  const totalContentLines = useMemo(() => {
+    let total = messageLineInfo.reduce((sum, info) => sum + info.lines, 0);
+    if (isProcessing) total += 3; // Processing indicator
+    return total;
+  }, [messageLineInfo, isProcessing]);
 
-  // Find new messages that haven't been rendered to Static yet
-  const newMessages = completedMessages.filter(msg => !renderedIdsRef.current.has(msg.id));
+  // Maximum scroll offset (0 = bottom, positive = scrolled up)
+  const maxScrollOffset = Math.max(0, totalContentLines - maxHeight);
 
-  // Update rendered IDs after this render
-  useEffect(() => {
-    for (const msg of completedMessages) {
-      renderedIdsRef.current.add(msg.id);
+  // Handle keyboard input for scrolling
+  useInput((input, key) => {
+    if (!isActive || !onScroll) return;
+
+    if (key.upArrow) {
+      onScroll(Math.min(scrollOffset + 3, maxScrollOffset));
+    } else if (key.downArrow) {
+      onScroll(Math.max(scrollOffset - 3, 0));
+    } else if (key.pageUp) {
+      onScroll(Math.min(scrollOffset + maxHeight, maxScrollOffset));
+    } else if (key.pageDown) {
+      onScroll(Math.max(scrollOffset - maxHeight, 0));
+    } else if (input === 'g' && key.shift) {
+      // Shift+G: scroll to top (oldest messages)
+      onScroll(maxScrollOffset);
+    } else if (input === 'g') {
+      // g: scroll to bottom (newest messages)
+      onScroll(0);
     }
-  }, [completedMessages]);
+  }, { isActive });
+
+  // Calculate which messages to show based on scroll offset
+  const { visibleMessages, hiddenAbove, hiddenBelow } = useMemo(() => {
+    if (!maxHeight || maxHeight < 5) {
+      return { visibleMessages: messages.slice(-3), hiddenAbove: Math.max(0, messages.length - 3), hiddenBelow: 0 };
+    }
+
+    // We render from bottom up, so scrollOffset=0 means showing the latest messages
+    // scrollOffset>0 means we've scrolled up to see older messages
+
+    const availableHeight = maxHeight;
+    let linesUsed = 0;
+
+    // Account for processing indicator if showing bottom (scrollOffset=0) and processing
+    const showProcessing = isProcessing && scrollOffset === 0;
+    if (showProcessing) {
+      linesUsed += 3;
+    }
+
+    // Start from the end and work backwards, skipping messages covered by scrollOffset
+    let skipLines = scrollOffset;
+    let endIdx = messages.length;
+
+    // Skip lines from the bottom based on scroll offset
+    for (let i = messages.length - 1; i >= 0 && skipLines > 0; i--) {
+      const msgLines = messageLineInfo[i]?.lines ?? 3;
+      if (skipLines >= msgLines) {
+        skipLines -= msgLines;
+        endIdx = i;
+      } else {
+        break;
+      }
+    }
+
+    // Now collect messages that fit in the view
+    const result: Message[] = [];
+    let startIdx = endIdx;
+
+    for (let i = endIdx - 1; i >= 0; i--) {
+      const msgLines = messageLineInfo[i]?.lines ?? 3;
+
+      // Reserve 1 line for scroll indicator if we'd hide messages
+      const indicatorLine = (i > 0 || scrollOffset > 0) ? 1 : 0;
+      if (linesUsed + msgLines + indicatorLine > availableHeight) {
+        break;
+      }
+
+      linesUsed += msgLines;
+      result.unshift(messages[i]);
+      startIdx = i;
+    }
+
+    return {
+      visibleMessages: result,
+      hiddenAbove: startIdx,
+      hiddenBelow: messages.length - endIdx,
+    };
+  }, [messages, messageLineInfo, maxHeight, isProcessing, scrollOffset]);
 
   // Show welcome text until there's user input (not just system messages)
   const hasUserInput = messages.some(m => m.role === 'user');
@@ -85,7 +146,7 @@ export function ChatView({
         <Text> </Text>
         <Text dimColor>Additional Shortcuts: ^A Change AI Model  ^Y New Terminal</Text>
         <Text> </Text>
-        <Text dimColor>Scroll up in terminal to see full chat history.</Text>
+        <Text dimColor>Scroll: ↑/↓ arrows, Page Up/Down, g/G for top/bottom</Text>
         <Text> </Text>
         <Text dimColor>Talk Commands: /save to save chat to Talks, /topic "name" to set topic</Text>
         <Text> </Text>
@@ -107,19 +168,39 @@ export function ChatView({
     );
   }
 
+  const showProcessing = isProcessing && scrollOffset === 0;
+
   return (
     <Box flexDirection="column" height={maxHeight} justifyContent="flex-end">
-      {/* Static: Messages go into terminal scrollback - scroll up to see full history */}
-      <Static items={newMessages}>
-        {(msg) => (
-          <Box key={msg.id}>
-            <MessageItem msg={msg} />
-          </Box>
-        )}
-      </Static>
+      {hiddenAbove > 0 && (
+        <Box>
+          <Text dimColor>↑ {hiddenAbove} earlier message{hiddenAbove > 1 ? 's' : ''} (↑/PgUp to scroll)</Text>
+        </Box>
+      )}
 
-      {/* Dynamic: Shows streaming content while AI is responding */}
-      {isProcessing && (
+      {visibleMessages.map((msg) => {
+        const speakerName = msg.role === 'user'
+          ? 'You'
+          : msg.role === 'system'
+            ? 'System'
+            : getModelAlias(msg.model ?? '');
+        const speakerColor = msg.role === 'user' ? 'green' : msg.role === 'system' ? 'yellow' : 'cyan';
+
+        return (
+          <Box key={msg.id} marginY={0} flexDirection="column">
+            <Box>
+              <Text color={speakerColor} bold>
+                {speakerName}:
+              </Text>
+            </Box>
+            <Box paddingLeft={2} marginBottom={1}>
+              <Text wrap="wrap">{msg.content || ' '}</Text>
+            </Box>
+          </Box>
+        );
+      })}
+
+      {showProcessing && (
         <Box flexDirection="column">
           <Box>
             <Text color="cyan" bold>{currentAiName}:</Text>
@@ -131,6 +212,12 @@ export function ChatView({
               <Text color="gray">thinking...</Text>
             )}
           </Box>
+        </Box>
+      )}
+
+      {hiddenBelow > 0 && (
+        <Box>
+          <Text dimColor>↓ {hiddenBelow} newer message{hiddenBelow > 1 ? 's' : ''} (↓/PgDn to scroll)</Text>
         </Box>
       )}
     </Box>
