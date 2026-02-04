@@ -713,7 +713,7 @@ function App({ options }: AppProps) {
           onSubmit={handleSubmit}
           disabled={chat.isProcessing}
           voiceMode={realtimeVoice.isActive ? 'liveChat' : voice.voiceMode}
-          volumeLevel={voice.volumeLevel}
+          volumeLevel={realtimeVoice.isActive ? realtimeVoice.volumeLevel : voice.volumeLevel}
           width={terminalWidth - 2}
           isActive={!showModelPicker && !showTranscript && !showTalks && !showSettings}
           realtimeState={realtimeVoice.state}

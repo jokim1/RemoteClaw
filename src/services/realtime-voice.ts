@@ -34,6 +34,7 @@ export interface RealtimeVoiceCallbacks {
   onAITranscript?: (text: string, isFinal: boolean) => void;
   onError?: (error: string) => void;
   onSessionEnd?: () => void;
+  onVolumeLevel?: (level: number) => void;
 }
 
 // Audio format for realtime streaming (matches OpenAI Realtime API requirements)
@@ -50,6 +51,7 @@ export class RealtimeVoiceService {
   private playbackInterval: NodeJS.Timeout | null = null;
   private state: RealtimeVoiceState = 'disconnected';
   private callbacks: RealtimeVoiceCallbacks = {};
+  private _volumeLevel: number = 0;
 
   constructor(config: RealtimeVoiceServiceConfig) {
     this.config = config;
@@ -102,6 +104,29 @@ export class RealtimeVoiceService {
   private setState(state: RealtimeVoiceState): void {
     this.state = state;
     this.callbacks.onStateChange?.(state);
+  }
+
+  /** Get current microphone volume level (0-100). */
+  getVolumeLevel(): number {
+    return this._volumeLevel;
+  }
+
+  /** Compute RMS volume level (0-100) from PCM16 audio buffer. */
+  private computeVolumeLevel(buffer: Buffer): number {
+    const sampleCount = Math.floor(buffer.length / 2);
+    if (sampleCount < 10) return 0;
+
+    let sumSquares = 0;
+    for (let i = 0; i < sampleCount; i++) {
+      const sample = buffer.readInt16LE(i * 2);
+      sumSquares += sample * sample;
+    }
+    const rms = Math.sqrt(sumSquares / sampleCount);
+    if (rms < 1) return 0;
+
+    // Map dBFS (-50 to 0) to 0-100
+    const dBFS = 20 * Math.log10(rms / 32768);
+    return Math.min(100, Math.max(0, Math.round((dBFS + 50) * 2)));
   }
 
   /** Connect to gateway's realtime voice WebSocket endpoint. */
@@ -208,6 +233,10 @@ export class RealtimeVoiceService {
     });
 
     this.recProcess.stdout?.on('data', (chunk: Buffer) => {
+      // Compute volume level from incoming audio
+      this._volumeLevel = this.computeVolumeLevel(chunk);
+      this.callbacks.onVolumeLevel?.(this._volumeLevel);
+
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.send({
           type: 'audio',

@@ -25,6 +25,7 @@ export interface RealtimeVoiceHookResult {
   state: RealtimeVoiceState;
   userTranscript: string;
   aiTranscript: string;
+  volumeLevel: number;
   provider: RealtimeVoiceProvider | null;
   setProvider: (provider: RealtimeVoiceProvider) => void;
   startSession: (systemPrompt?: string) => Promise<boolean>;
@@ -42,6 +43,7 @@ export function useRealtimeVoice(opts: UseRealtimeVoiceOpts): RealtimeVoiceHookR
   const [state, setState] = useState<RealtimeVoiceState>('disconnected');
   const [userTranscript, setUserTranscript] = useState('');
   const [aiTranscript, setAiTranscript] = useState('');
+  const [volumeLevel, setVolumeLevel] = useState(0);
   const [provider, setProviderState] = useState<RealtimeVoiceProvider | null>(null);
 
   // Keep opts current via ref for stable callbacks
@@ -65,6 +67,10 @@ export function useRealtimeVoice(opts: UseRealtimeVoiceOpts): RealtimeVoiceHookR
     service.setCallbacks({
       onStateChange: (newState) => {
         setState(newState);
+        // Reset volume when disconnected
+        if (newState === 'disconnected') {
+          setVolumeLevel(0);
+        }
       },
       onUserTranscript: (text, isFinal) => {
         setUserTranscript(text);
@@ -87,6 +93,10 @@ export function useRealtimeVoice(opts: UseRealtimeVoiceOpts): RealtimeVoiceHookR
         setState('disconnected');
         setUserTranscript('');
         setAiTranscript('');
+        setVolumeLevel(0);
+      },
+      onVolumeLevel: (level) => {
+        setVolumeLevel(level);
       },
     });
   }, [opts.realtimeServiceRef.current]);
@@ -160,6 +170,7 @@ export function useRealtimeVoice(opts: UseRealtimeVoiceOpts): RealtimeVoiceHookR
     state,
     userTranscript,
     aiTranscript,
+    volumeLevel,
     provider,
     setProvider,
     startSession,
