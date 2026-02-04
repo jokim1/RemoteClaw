@@ -49,12 +49,22 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
   const modelIndicator = modelStatus === 'checking' ? ' ◐' : '';
   const isSubscription = billing?.mode === 'subscription';
 
-  // Status icons (no colors - using fixed-width text rendering for stability)
+  // Icons with colors
   const gwIcon = gatewayStatus === 'online' ? '●' : gatewayStatus === 'connecting' ? '◐' : '○';
+  const gwColor = gatewayStatus === 'online' ? 'green' : gatewayStatus === 'connecting' ? 'yellow' : 'red';
+
   const tsIcon = tailscaleStatus === 'connected' ? '●' : '○';
+  const tsColor = tailscaleStatus === 'connected' ? 'green' : tailscaleStatus === 'checking' ? 'yellow' : 'red';
+
+  const modelColor = modelStatus === 'checking' ? 'yellow' : modelStatus === 'ok' ? 'green'
+    : typeof modelStatus === 'object' ? 'red' : 'cyan';
+
   const micIcon = voiceReadiness === 'ready' ? '●' : voiceReadiness === 'checking' ? '◐' : '○';
+  const micColor = voiceReadiness === 'ready' ? 'green' : voiceReadiness === 'checking' ? 'yellow' : 'red';
+
   const isVoiceActive = voiceMode === 'playing' || voiceMode === 'synthesizing';
   const ttsIcon = isVoiceActive ? (voiceMode === 'playing' ? '♪' : '◐') : ttsEnabled ? '●' : '○';
+  const ttsColor = isVoiceActive ? (voiceMode === 'playing' ? 'magenta' : 'yellow') : ttsEnabled ? 'green' : 'white';
 
   // Build cost/billing section
   let billingText = '';
@@ -82,27 +92,34 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
     billingText = parts.join('  ');
   }
 
-  // Build fixed-width lines to prevent layout recalculation
-  const leftPart = `GW:${gwIcon} TS:${tsIcon} M:${modelName}${modelIndicator}  ${billingText}`;
-  const rightPart = `V:${ttsIcon} Mic:${micIcon}  ${sessionName ?? ''}`;
-  const gap = Math.max(2, terminalWidth - leftPart.length - rightPart.length - 2);
-
-  // Create exact-width string (prevents Yoga from recalculating layout)
-  let statusLine = ' ' + leftPart + ' '.repeat(gap) + rightPart + ' ';
-  if (statusLine.length > terminalWidth) {
-    statusLine = statusLine.slice(0, terminalWidth);
-  } else if (statusLine.length < terminalWidth) {
-    statusLine = statusLine + ' '.repeat(terminalWidth - statusLine.length);
-  }
+  // Calculate padding for right-alignment
+  const leftContent = `GW:${gwIcon} TS:${tsIcon} M:${modelName}${modelIndicator}  ${billingText}`;
+  const rightContent = `V:${ttsIcon} Mic:${micIcon}  ${sessionName ?? ''}`;
+  const padding = Math.max(1, terminalWidth - leftContent.length - rightContent.length - 2);
 
   const separator = '─'.repeat(terminalWidth);
 
-  // Render with fixed content - no dynamic layout
   return (
     <Box flexDirection="column" width={terminalWidth} height={3}>
-      <Box height={1} />
-      <Box height={1}>
-        <Text dimColor>{statusLine}</Text>
+      <Box height={2}>
+        <Text> </Text>
+        <Text dimColor>GW:</Text>
+        <Text color={gwColor}>{gwIcon}</Text>
+        <Text> </Text>
+        <Text dimColor>TS:</Text>
+        <Text color={tsColor}>{tsIcon}</Text>
+        <Text> </Text>
+        <Text dimColor>M:</Text>
+        <Text color={modelColor} bold>{modelName}{modelIndicator}</Text>
+        <Text>  </Text>
+        <Text dimColor>{billingText}</Text>
+        <Text>{' '.repeat(padding)}</Text>
+        <Text dimColor>V:</Text>
+        <Text color={ttsColor}>{ttsIcon}</Text>
+        <Text> </Text>
+        <Text dimColor>Mic:</Text>
+        <Text color={micColor}>{micIcon}</Text>
+        <Text dimColor>  {sessionName ?? ''} </Text>
       </Box>
       <Box height={1}>
         <Text dimColor>{separator}</Text>
@@ -127,24 +144,21 @@ export function ShortcutBar({ terminalWidth = 80, ttsEnabled = true }: ShortcutB
     { key: '^X', label: 'Exit' },
   ];
 
-  // Build fixed-width shortcut line
-  const shortcutText = shortcuts.map(s => `[${s.key}] ${s.label}`).join('  ');
-  let shortcutLine = ' ' + shortcutText;
-  if (shortcutLine.length < terminalWidth) {
-    shortcutLine = shortcutLine + ' '.repeat(terminalWidth - shortcutLine.length);
-  } else {
-    shortcutLine = shortcutLine.slice(0, terminalWidth);
-  }
-
   const separator = '─'.repeat(terminalWidth);
 
+  // Use flexbox space-between to distribute shortcuts evenly
   return (
     <Box flexDirection="column" width={terminalWidth} height={2}>
       <Box height={1}>
         <Text dimColor>{separator}</Text>
       </Box>
-      <Box height={1}>
-        <Text dimColor>{shortcutLine}</Text>
+      <Box height={1} justifyContent="space-between" paddingX={1}>
+        {shortcuts.map((s) => (
+          <Box key={s.key}>
+            <Text inverse> {s.key} </Text>
+            <Text> {s.label}</Text>
+          </Box>
+        ))}
       </Box>
     </Box>
   );
