@@ -144,7 +144,16 @@ export function ChatView({
         <Text dimColor>Additional Shortcuts: ^A Change AI Model  ^Y New Terminal</Text>
         <Text> </Text>
         <Text dimColor>Scroll: ↑/↓ arrows, Page Up/Down, g/G for top/bottom</Text>
+        <Text> </Text>
         <Text dimColor>Talk Commands: /save to save chat to Talks, /topic "name" to set topic</Text>
+        <Text> </Text>
+        <Text dimColor>^T Talks - List of saved discussion topics</Text>
+        <Text dimColor>^N New Chat - Start fresh with new context</Text>
+        <Text dimColor>^C Live Chat - Streamed real-time voice conversation</Text>
+        <Text dimColor>^P PTT - Push to Talk, send voice memos to AI</Text>
+        <Text dimColor>^V Voice ON/OFF - Toggle AI voice responses</Text>
+        <Text dimColor>^H History - See transcript of past talks</Text>
+        <Text dimColor>^S Settings - Modify terminal settings</Text>
       </Box>
     );
   }
