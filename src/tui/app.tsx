@@ -308,7 +308,9 @@ function App({ options }: AppProps) {
     }
 
     if (input === 'v' && key.ctrl) {
-      if (!chat.isProcessing) {
+      if (chat.isProcessing) {
+        setError('Cannot record while processing');
+      } else {
         voice.handleVoiceToggle();
       }
       cleanInputChar(setInputText, 'v');

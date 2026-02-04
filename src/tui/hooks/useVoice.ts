@@ -107,13 +107,18 @@ export function useVoice(opts: UseVoiceOpts) {
       return;
     }
 
+    if (!voiceServiceRef.current) {
+      setError('Voice service not initialized. Try restarting.');
+      return;
+    }
+
     if (mode === 'idle') {
-      const result = voiceServiceRef.current?.startRecording();
-      if (result?.ok) {
+      const result = voiceServiceRef.current.startRecording();
+      if (result.ok) {
         setVoiceMode('recording');
         setError(null);
       } else {
-        setError(result?.error ?? 'Failed to start recording');
+        setError(result.error);
       }
     } else if (mode === 'recording') {
       stopAndTranscribe();
