@@ -12,6 +12,8 @@ export interface CommandContext {
   openModelPicker: () => void;
   clearSession: () => void;
   setError: (error: string | null) => void;
+  saveTalk: () => void;
+  setTopicTitle: (title: string) => void;
 }
 
 export interface CommandResult {
@@ -38,6 +40,22 @@ function handleClearCommand(_args: string, ctx: CommandContext): CommandResult {
   return { handled: true };
 }
 
+/** Handle /save — save current chat to Talks list. */
+function handleSaveCommand(_args: string, ctx: CommandContext): CommandResult {
+  ctx.saveTalk();
+  return { handled: true };
+}
+
+/** Handle /topic <title> — set topic title for current chat. */
+function handleTopicCommand(args: string, ctx: CommandContext): CommandResult {
+  if (!args.trim()) {
+    ctx.setError('Usage: /topic <title>');
+    return { handled: true };
+  }
+  ctx.setTopicTitle(args.trim());
+  return { handled: true };
+}
+
 /**
  * Registry of slash commands.
  * Add new commands here — they'll be available immediately.
@@ -45,6 +63,8 @@ function handleClearCommand(_args: string, ctx: CommandContext): CommandResult {
 const COMMANDS: Record<string, CommandHandler> = {
   model: handleModelCommand,
   clear: handleClearCommand,
+  save: handleSaveCommand,
+  topic: handleTopicCommand,
 };
 
 /**

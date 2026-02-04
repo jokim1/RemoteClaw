@@ -135,6 +135,7 @@ interface ShortcutBarProps {
 export function ShortcutBar({ terminalWidth = 80, ttsEnabled = true }: ShortcutBarProps) {
   const shortcuts = [
     { key: '^T', label: 'Talks' },
+    { key: '^N', label: 'New' },
     { key: '^C', label: 'Chat' },
     { key: '^P', label: 'PTT' },
     { key: '^V', label: ttsEnabled ? 'Voice OFF' : 'Voice ON' },
