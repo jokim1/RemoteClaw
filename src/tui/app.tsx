@@ -311,11 +311,17 @@ function App({ options }: AppProps) {
 
   // --- Talk handlers ---
 
-  const handleSaveTalk = useCallback(() => {
+  const handleSaveTalk = useCallback((title?: string) => {
     if (activeTalkId && talkManagerRef.current) {
       const success = talkManagerRef.current.saveTalk(activeTalkId);
       if (success) {
-        chat.setMessages(prev => [...prev, createMessage('system', 'Chat saved to Talks.')]);
+        // If title provided, also set it
+        if (title) {
+          talkManagerRef.current.setTopicTitle(activeTalkId, title);
+          chat.setMessages(prev => [...prev, createMessage('system', `Chat saved as "${title}"`)]);
+        } else {
+          chat.setMessages(prev => [...prev, createMessage('system', 'Chat saved to Talks.')]);
+        }
       } else {
         setError('Failed to save talk');
       }
@@ -620,6 +626,28 @@ function App({ options }: AppProps) {
             onOpenHistory={() => { setShowSettings(false); setShowTranscript(true); }}
             onExit={() => { voiceServiceRef.current?.cleanup(); realtimeVoiceServiceRef.current?.cleanup(); exit(); }}
             setError={setError}
+            voiceCaps={{
+              sttProviders: gateway.voiceCaps.sttProviders ?? [],
+              sttActiveProvider: gateway.voiceCaps.sttProvider,
+              ttsProviders: gateway.voiceCaps.ttsProviders ?? [],
+              ttsActiveProvider: gateway.voiceCaps.ttsProvider,
+            }}
+            onSttProviderChange={async (provider) => {
+              const success = await voiceServiceRef.current?.setSttProvider(provider);
+              if (success) {
+                // Refresh capabilities to get updated provider
+                voiceServiceRef.current?.fetchCapabilities();
+              }
+              return success ?? false;
+            }}
+            onTtsProviderChange={async (provider) => {
+              const success = await voiceServiceRef.current?.setTtsProvider(provider);
+              if (success) {
+                // Refresh capabilities to get updated provider
+                voiceServiceRef.current?.fetchCapabilities();
+              }
+              return success ?? false;
+            }}
             realtimeVoiceCaps={gateway.realtimeVoiceCaps}
             realtimeProvider={realtimeVoice.provider}
             onRealtimeProviderChange={realtimeVoice.setProvider}

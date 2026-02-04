@@ -28,6 +28,10 @@ export interface VoiceCaps {
   readiness: VoiceReadiness;
   sttAvailable: boolean;
   ttsAvailable: boolean;
+  sttProvider?: string;
+  sttProviders?: string[];
+  ttsProvider?: string;
+  ttsProviders?: string[];
 }
 
 interface Callbacks {
@@ -59,6 +63,10 @@ const initialState: GatewayState = {
     readiness: 'checking',
     sttAvailable: false,
     ttsAvailable: false,
+    sttProvider: undefined,
+    sttProviders: undefined,
+    ttsProvider: undefined,
+    ttsProviders: undefined,
   },
   realtimeVoiceCaps: null,
   isInitialized: false,
@@ -171,10 +179,26 @@ export function useGateway(
             if (!caps) {
               updates.voiceCaps = { readiness: 'no-gateway', sttAvailable: false, ttsAvailable: false };
             } else if (!caps.stt.available) {
-              updates.voiceCaps = { readiness: 'no-stt', sttAvailable: false, ttsAvailable: caps.tts.available };
+              updates.voiceCaps = {
+                readiness: 'no-stt',
+                sttAvailable: false,
+                ttsAvailable: caps.tts.available,
+                sttProvider: caps.stt.provider,
+                sttProviders: caps.stt.providers,
+                ttsProvider: caps.tts.provider,
+                ttsProviders: caps.tts.providers,
+              };
               voiceChecked = true;
             } else {
-              updates.voiceCaps = { readiness: 'ready', sttAvailable: caps.stt.available, ttsAvailable: caps.tts.available };
+              updates.voiceCaps = {
+                readiness: 'ready',
+                sttAvailable: caps.stt.available,
+                ttsAvailable: caps.tts.available,
+                sttProvider: caps.stt.provider,
+                sttProviders: caps.stt.providers,
+                ttsProvider: caps.tts.provider,
+                ttsProviders: caps.tts.providers,
+              };
               voiceChecked = true;
             }
           }

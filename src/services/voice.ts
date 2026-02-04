@@ -19,6 +19,7 @@ export interface VoiceCapabilities {
   stt: {
     available: boolean;
     provider?: string;
+    providers?: string[];  // All configured STT providers
     model?: string;
     maxDurationSeconds?: number;
     maxFileSizeMB?: number;
@@ -26,6 +27,7 @@ export interface VoiceCapabilities {
   tts: {
     available: boolean;
     provider?: string;
+    providers?: string[];  // All configured TTS providers
     model?: string;
     voices?: string[];
     defaultVoice?: string;
@@ -161,6 +163,63 @@ export class VoiceService implements IVoiceService {
 
   get canPlayback(): boolean {
     return (this.soxAvailable ?? false) && (this.capabilities?.tts.available ?? false);
+  }
+
+  /** Get current capabilities (cached from last fetch). */
+  getCapabilities(): VoiceCapabilities | null {
+    return this.capabilities;
+  }
+
+  /** Switch the active STT provider on the gateway. */
+  async setSttProvider(provider: string): Promise<boolean> {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (this.config.gatewayToken) {
+        headers['Authorization'] = `Bearer ${this.config.gatewayToken}`;
+      }
+
+      const response = await fetch(`${this.config.gatewayUrl}/api/voice/stt/provider`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ provider }),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (response.ok && this.capabilities) {
+        this.capabilities.stt.provider = provider;
+      }
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Switch the active TTS provider on the gateway. */
+  async setTtsProvider(provider: string): Promise<boolean> {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (this.config.gatewayToken) {
+        headers['Authorization'] = `Bearer ${this.config.gatewayToken}`;
+      }
+
+      const response = await fetch(`${this.config.gatewayUrl}/api/voice/tts/provider`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ provider }),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (response.ok && this.capabilities) {
+        this.capabilities.tts.provider = provider;
+      }
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   // --- Recording ---

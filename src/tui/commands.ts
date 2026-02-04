@@ -12,7 +12,7 @@ export interface CommandContext {
   openModelPicker: () => void;
   clearSession: () => void;
   setError: (error: string | null) => void;
-  saveTalk: () => void;
+  saveTalk: (title?: string) => void;
   setTopicTitle: (title: string) => void;
 }
 
@@ -40,9 +40,10 @@ function handleClearCommand(_args: string, ctx: CommandContext): CommandResult {
   return { handled: true };
 }
 
-/** Handle /save — save current chat to Talks list. */
-function handleSaveCommand(_args: string, ctx: CommandContext): CommandResult {
-  ctx.saveTalk();
+/** Handle /save [title] — save current chat to Talks list, optionally with a title. */
+function handleSaveCommand(args: string, ctx: CommandContext): CommandResult {
+  const title = args.trim() || undefined;
+  ctx.saveTalk(title);
   return { handled: true };
 }
 
