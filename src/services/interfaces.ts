@@ -34,6 +34,7 @@ export interface IVoiceService {
   readonly canPlayback: boolean;
 
   checkSoxInstalled(): boolean;
+  checkMicAvailable(): string | null;
   fetchCapabilities(): Promise<VoiceCapabilities | null>;
   startRecording(): { ok: true; tempPath: string } | { ok: false; error: string };
   stopRecording(): { ok: true; tempPath: string; durationMs: number } | { ok: false; error: string };

@@ -68,7 +68,7 @@ export interface UsageStats {
 
 export type VoiceMode = 'idle' | 'recording' | 'transcribing' | 'synthesizing' | 'playing';
 
-export type VoiceReadiness = 'checking' | 'ready' | 'no-sox' | 'no-gateway' | 'no-stt';
+export type VoiceReadiness = 'checking' | 'ready' | 'no-sox' | 'no-mic' | 'no-gateway' | 'no-stt';
 
 export interface VoiceState {
   mode: VoiceMode;

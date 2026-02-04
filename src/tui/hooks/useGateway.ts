@@ -121,15 +121,21 @@ export function useGateway(
           if (!soxOk) {
             setVoiceCaps(prev => ({ ...prev, readiness: 'no-sox' }));
           } else {
-            const caps = await voiceService?.fetchCapabilities();
-            if (!caps) {
-              setVoiceCaps(prev => ({ ...prev, readiness: 'no-gateway' }));
-            } else if (!caps.stt.available) {
-              setVoiceCaps({ readiness: 'no-stt', sttAvailable: false, ttsAvailable: caps.tts.available });
-              voiceChecked = true;
+            // Test if mic is actually working (catches wrong default device, permissions issues)
+            const micError = voiceService?.checkMicAvailable();
+            if (micError) {
+              setVoiceCaps(prev => ({ ...prev, readiness: 'no-mic' }));
             } else {
-              setVoiceCaps({ readiness: 'ready', sttAvailable: caps.stt.available, ttsAvailable: caps.tts.available });
-              voiceChecked = true;
+              const caps = await voiceService?.fetchCapabilities();
+              if (!caps) {
+                setVoiceCaps(prev => ({ ...prev, readiness: 'no-gateway' }));
+              } else if (!caps.stt.available) {
+                setVoiceCaps({ readiness: 'no-stt', sttAvailable: false, ttsAvailable: caps.tts.available });
+                voiceChecked = true;
+              } else {
+                setVoiceCaps({ readiness: 'ready', sttAvailable: caps.stt.available, ttsAvailable: caps.tts.available });
+                voiceChecked = true;
+              }
             }
           }
         }

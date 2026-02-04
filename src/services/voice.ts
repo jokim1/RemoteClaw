@@ -95,6 +95,40 @@ export class VoiceService implements IVoiceService {
     return this.soxAvailable;
   }
 
+  /**
+   * Test if microphone is actually working by doing a brief test recording.
+   * Returns null if mic works, or an error message if it doesn't.
+   */
+  checkMicAvailable(): string | null {
+    if (!this.checkSoxInstalled()) {
+      return 'SoX not installed';
+    }
+
+    const testPath = path.join(os.tmpdir(), `remoteclaw-mic-test-${Date.now()}.wav`);
+    try {
+      // Try a very brief recording (0.5 seconds) to test mic access
+      execSync(`rec -q -r 16000 -c 1 -b 16 -t wav "${testPath}" trim 0 0.5`, {
+        timeout: 5000,
+        stdio: 'pipe',
+      });
+
+      // Check if file was created and has audio data
+      const stat = fs.statSync(testPath);
+      fs.unlinkSync(testPath); // Clean up
+
+      // WAV header is 44 bytes, so file should be larger if audio was captured
+      // 0.5 sec at 16kHz 16-bit mono = 16000 bytes + 44 header = ~16044 bytes
+      if (stat.size < 1000) {
+        return 'No audio captured. Check System Preferences → Sound → Input and select your microphone.';
+      }
+
+      return null; // Success
+    } catch (err) {
+      try { fs.unlinkSync(testPath); } catch { /* ignore */ }
+      return 'Mic test failed. Check microphone permissions and device settings.';
+    }
+  }
+
   // --- Capability discovery ---
 
   async fetchCapabilities(): Promise<VoiceCapabilities | null> {
