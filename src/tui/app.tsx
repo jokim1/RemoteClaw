@@ -380,7 +380,8 @@ function App({ options }: AppProps) {
   const headerHeight = 3;
   const inputSeparatorHeight = 1;
   const shortcutBarHeight = 2;
-  const errorHeight = error ? 1 : 0;
+  // Always reserve 1 line for error to prevent layout shifts
+  const errorHeight = 1;
 
   const inputPadding = 4;
   const promptWidth = 2;
@@ -409,11 +410,9 @@ function App({ options }: AppProps) {
         />
       </Box>
 
-      {error ? (
-        <Box height={1} paddingX={1}>
-          <Text color="red">! {error}</Text>
-        </Box>
-      ) : null}
+      <Box height={1} paddingX={1}>
+        {error ? <Text color="red">! {error}</Text> : null}
+      </Box>
 
       <Box flexDirection="column" height={chatHeight} paddingX={1}>
         {showModelPicker ? (
