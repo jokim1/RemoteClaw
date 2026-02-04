@@ -141,15 +141,15 @@ export const MODEL_REGISTRY: ModelInfo[] = [
     pricing: { input: 0.15, output: 0.60 },
     aliases: ['gemini3flash'],
   },
-  // --- Moonshot ---
+  // --- Kimi via NVIDIA ---
   {
-    id: 'moonshot/kimi-k2-0905-preview',
-    provider: 'Moonshot',
-    name: 'Kimi K2 (Preview)',
+    id: 'nvidia/moonshotai/kimi-k2.5',
+    provider: 'NVIDIA',
+    name: 'Kimi K2.5',
     shortAlias: 'Kimi',
     emoji: '🌙',
     tier: 'balanced',
-    pricing: { input: 0.60, output: 2.40 },
+    pricing: { input: 0, output: 0 },
     aliases: ['kimi'],
   },
 ];
