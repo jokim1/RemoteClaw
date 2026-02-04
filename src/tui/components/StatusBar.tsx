@@ -100,9 +100,8 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
   const separator = '─'.repeat(terminalWidth);
 
   return (
-    <Box flexDirection="column" width={terminalWidth} height={3}>
-      <Box height={2}>
-        <Text> </Text>
+    <Box flexDirection="column" width={terminalWidth} height={2}>
+      <Box height={1}>
         <Text dimColor>GW:</Text>
         <Text color={gwColor}>{gwIcon}</Text>
         <Text> </Text>
@@ -119,7 +118,7 @@ export function StatusBar({ model, modelStatus, usage, gatewayStatus, tailscaleS
         <Text> </Text>
         <Text dimColor>Mic:</Text>
         <Text color={micColor}>{micIcon}</Text>
-        <Text dimColor>  {sessionName ?? ''} </Text>
+        <Text dimColor>  {sessionName ?? ''}</Text>
       </Box>
       <Box height={1}>
         <Text dimColor>{separator}</Text>

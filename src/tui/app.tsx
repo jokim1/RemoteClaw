@@ -399,7 +399,7 @@ function App({ options }: AppProps) {
 
   // --- Layout ---
 
-  const headerHeight = 3;
+  const headerHeight = 2;
   const inputSeparatorHeight = 1;
   const shortcutBarHeight = 2;
   // Always reserve 1 line for error to prevent layout shifts
@@ -429,7 +429,7 @@ function App({ options }: AppProps) {
 
   return (
     <Box flexDirection="column" width={terminalWidth} height={terminalHeight}>
-      <Box height={3} flexShrink={0}>
+      <Box height={2} flexShrink={0}>
         <StatusBar
           gatewayStatus={gateway.gatewayStatus}
           tailscaleStatus={gateway.tailscaleStatus}
