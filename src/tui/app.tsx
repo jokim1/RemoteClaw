@@ -599,6 +599,8 @@ function App({ options }: AppProps) {
           disabled={chat.isProcessing}
           voiceMode={voice.voiceMode}
           volumeLevel={voice.volumeLevel}
+          width={terminalWidth - 2}
+          isActive={!showModelPicker && !showTranscript && !showTalks && !showSettings}
         />
       </Box>
 

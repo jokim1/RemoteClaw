@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import TextInput from 'ink-text-input';
+import { MultiLineInput } from './MultiLineInput.js';
 import type { VoiceMode } from '../../types.js';
 
 interface InputAreaProps {
@@ -16,6 +16,8 @@ interface InputAreaProps {
   disabled: boolean;
   voiceMode?: VoiceMode;
   volumeLevel?: number;
+  width?: number;
+  isActive?: boolean;
 }
 
 function VolumeMeter({ level }: { level: number }) {
@@ -33,7 +35,7 @@ function VolumeMeter({ level }: { level: number }) {
   );
 }
 
-export function InputArea({ value, onChange, onSubmit, disabled, voiceMode, volumeLevel }: InputAreaProps) {
+export function InputArea({ value, onChange, onSubmit, disabled, voiceMode, volumeLevel, width = 80, isActive = true }: InputAreaProps) {
   if (voiceMode === 'liveTalk') {
     return (
       <Box paddingX={1}>
@@ -93,10 +95,19 @@ export function InputArea({ value, onChange, onSubmit, disabled, voiceMode, volu
     );
   }
 
+  // Calculate available width for input (subtract padding and prompt)
+  const inputWidth = Math.max(10, width - 4);
+
   return (
     <Box paddingX={1}>
       <Text color="green">&gt; </Text>
-      <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+      <MultiLineInput
+        value={value}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        width={inputWidth}
+        isActive={isActive}
+      />
     </Box>
   );
 }

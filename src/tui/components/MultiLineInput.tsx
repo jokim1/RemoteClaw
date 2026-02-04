@@ -1,0 +1,136 @@
+/**
+ * Multi-Line Text Input Component
+ *
+ * Custom text input that properly handles cursor navigation in wrapped text.
+ * Unlike ink-text-input, this tracks cursor position correctly across visual lines.
+ */
+
+import React, { useState, useEffect } from 'react';
+import { Text, useInput } from 'ink';
+
+interface MultiLineInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+  width: number;
+  isActive?: boolean;
+}
+
+export function MultiLineInput({
+  value,
+  onChange,
+  onSubmit,
+  width,
+  isActive = true,
+}: MultiLineInputProps) {
+  const [cursorPos, setCursorPos] = useState(value.length);
+
+  // Keep cursor in bounds when value changes externally
+  useEffect(() => {
+    if (cursorPos > value.length) {
+      setCursorPos(value.length);
+    }
+  }, [value, cursorPos]);
+
+  useInput(
+    (input, key) => {
+      if (!isActive) return;
+
+      // Submit on Enter
+      if (key.return) {
+        onSubmit(value);
+        return;
+      }
+
+      // Handle backspace
+      if (key.backspace || key.delete) {
+        if (cursorPos > 0) {
+          const newValue = value.slice(0, cursorPos - 1) + value.slice(cursorPos);
+          onChange(newValue);
+          setCursorPos(cursorPos - 1);
+        }
+        return;
+      }
+
+      // Arrow keys for navigation
+      if (key.leftArrow) {
+        setCursorPos(Math.max(0, cursorPos - 1));
+        return;
+      }
+
+      if (key.rightArrow) {
+        setCursorPos(Math.min(value.length, cursorPos + 1));
+        return;
+      }
+
+      // Up/Down arrows move by visual line width
+      if (key.upArrow) {
+        const newPos = cursorPos - width;
+        setCursorPos(Math.max(0, newPos));
+        return;
+      }
+
+      if (key.downArrow) {
+        const newPos = cursorPos + width;
+        setCursorPos(Math.min(value.length, newPos));
+        return;
+      }
+
+      // Home/End keys (Ctrl+A / Ctrl+E)
+      if (input === 'a' && key.ctrl) {
+        setCursorPos(0);
+        return;
+      }
+
+      if (input === 'e' && key.ctrl) {
+        setCursorPos(value.length);
+        return;
+      }
+
+      // Delete character at cursor (Ctrl+D)
+      if (input === 'd' && key.ctrl) {
+        if (cursorPos < value.length) {
+          const newValue = value.slice(0, cursorPos) + value.slice(cursorPos + 1);
+          onChange(newValue);
+        }
+        return;
+      }
+
+      // Kill line from cursor (Ctrl+K)
+      if (input === 'k' && key.ctrl) {
+        const newValue = value.slice(0, cursorPos);
+        onChange(newValue);
+        return;
+      }
+
+      // Clear line (Ctrl+U)
+      if (input === 'u' && key.ctrl) {
+        onChange('');
+        setCursorPos(0);
+        return;
+      }
+
+      // Regular character input
+      // Filter out control characters but allow normal typing
+      if (input && !key.ctrl && !key.meta && input.length === 1 && input.charCodeAt(0) >= 32) {
+        const newValue = value.slice(0, cursorPos) + input + value.slice(cursorPos);
+        onChange(newValue);
+        setCursorPos(cursorPos + 1);
+      }
+    },
+    { isActive }
+  );
+
+  // Render the text with cursor
+  const beforeCursor = value.slice(0, cursorPos);
+  const atCursor = value[cursorPos] || ' ';
+  const afterCursor = value.slice(cursorPos + 1);
+
+  return (
+    <Text wrap="wrap">
+      {beforeCursor}
+      <Text inverse>{atCursor}</Text>
+      {afterCursor}
+    </Text>
+  );
+}
