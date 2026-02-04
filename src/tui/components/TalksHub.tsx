@@ -20,6 +20,7 @@ interface TalksHubProps {
   terminalWidth: number;
   onClose: () => void;
   onSelectTalk: (talk: Talk) => void;
+  onNewChat: () => void;
 }
 
 export function TalksHub({
@@ -29,6 +30,7 @@ export function TalksHub({
   terminalWidth,
   onClose,
   onSelectTalk,
+  onNewChat,
 }: TalksHubProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -64,6 +66,12 @@ export function TalksHub({
     // ^T always closes
     if (input === 't' && key.ctrl) {
       onClose();
+      return;
+    }
+
+    // ^N starts new chat
+    if (input === 'n' && key.ctrl) {
+      onNewChat();
       return;
     }
 

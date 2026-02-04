@@ -567,6 +567,7 @@ function App({ options }: AppProps) {
             terminalWidth={terminalWidth}
             onClose={() => setShowTalks(false)}
             onSelectTalk={handleSelectTalk}
+            onNewChat={() => { setShowTalks(false); handleNewChat(); }}
           />
         ) : showSettings ? (
           <SettingsPicker
