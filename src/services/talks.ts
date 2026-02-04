@@ -100,6 +100,20 @@ export class TalkManager {
     return true;
   }
 
+  /** Set the AI model for a talk. */
+  setModel(talkId: string, model: string): boolean {
+    const talk = this.talks.get(talkId);
+    if (!talk) return false;
+
+    talk.model = model;
+    talk.updatedAt = Date.now();
+    if (talk.isSaved) {
+      this.persistTalk(talk);
+    }
+
+    return true;
+  }
+
   /** Get all saved talks (sorted by updatedAt, most recent first). */
   listSavedTalks(): Talk[] {
     return Array.from(this.talks.values())

@@ -122,6 +122,7 @@ export interface Talk {
   sessionId: string;       // Reference to underlying session
   topicTitle?: string;     // User-set via /topic
   isSaved: boolean;        // Explicitly saved via /save
+  model?: string;          // Last used AI model for this talk
   createdAt: number;
   updatedAt: number;
 }

@@ -288,6 +288,11 @@ function App({ options }: AppProps) {
     chatServiceRef.current?.setModel(modelId);
     sessionManagerRef.current?.setSessionModel(modelId);
 
+    // Save model to the active talk for persistence
+    if (activeTalkIdRef.current && talkManagerRef.current) {
+      talkManagerRef.current.setModel(activeTalkIdRef.current, modelId);
+    }
+
     chat.setMessages(prev => [...prev, createMessage('system', `Switched to ${getModelAlias(modelId)}. Checking connection...`)]);
     setError(null);
 
@@ -377,9 +382,15 @@ function App({ options }: AppProps) {
       setActiveTalkId(talk.id);
       talkManagerRef.current?.setActiveTalk(talk.id);
       talkManagerRef.current?.touchTalk(talk.id);
+
+      // Restore the model from the talk if it has one
+      if (talk.model) {
+        switchModel(talk.model);
+      }
+
       setShowTalks(false);
     }
-  }, [activeTalkId, chat.messages]);
+  }, [activeTalkId, chat.messages, switchModel]);
 
   // --- Submit handler (command registry + chat) ---
 
