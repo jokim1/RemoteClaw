@@ -152,8 +152,11 @@ export function useRealtimeVoice(opts: UseRealtimeVoiceOpts): RealtimeVoiceHookR
     setAiTranscript('');
   }, []);
 
+  // Only active when actually connected (listening or aiSpeaking), not during 'connecting'
+  const isConnected = state === 'listening' || state === 'aiSpeaking';
+
   return {
-    isActive: state !== 'disconnected',
+    isActive: isConnected,
     state,
     userTranscript,
     aiTranscript,

@@ -455,23 +455,20 @@ function App({ options }: AppProps) {
       return;
     }
 
-    // ^C Chat (realtime voice)
+    // ^C Chat (live voice mode)
+    // Note: True realtime WebSocket voice requires gateway endpoint /api/realtime-voice/stream
+    // For now, use legacy recording mode until gateway implements realtime streaming
     if (input === 'c' && key.ctrl) {
       if (chat.isProcessing) {
         setError('Cannot start chat while processing');
       } else if (realtimeVoice.isActive) {
         // End realtime session
         realtimeVoice.endSession();
-      } else if (gateway.realtimeVoiceCaps?.available) {
-        // Start realtime session
-        realtimeVoice.startSession().then(success => {
-          if (!success) {
-            // Fall back to legacy live talk mode
-            voice.handleLiveTalk?.();
-          }
-        });
+      } else if (voice.voiceMode === 'liveChat') {
+        // Already in live chat mode - end it
+        voice.handleLiveTalk?.();
       } else {
-        // Fall back to legacy live talk mode
+        // Start live chat mode (legacy recording mode for now)
         voice.handleLiveTalk?.();
       }
       cleanInputChar(setInputText, 'c');
