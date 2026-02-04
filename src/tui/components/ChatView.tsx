@@ -144,6 +144,7 @@ export function ChatView({
         <Text dimColor>Additional Shortcuts: ^A Change AI Model  ^Y New Terminal</Text>
         <Text> </Text>
         <Text dimColor>Scroll: ↑/↓ arrows, Page Up/Down, g/G for top/bottom</Text>
+        <Text dimColor>Talk Commands: /save to save chat to Talks, /topic "name" to set topic</Text>
       </Box>
     );
   }
