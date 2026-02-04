@@ -108,6 +108,12 @@ export function ChatView({
       }
     }
 
+    // Reserve space for "newer messages" indicator if we've scrolled up
+    const hasNewerMessages = endIdx < messages.length;
+    if (hasNewerMessages) {
+      linesUsed += 1;
+    }
+
     // Now collect messages that fit in the view
     const result: Message[] = [];
     let startIdx = endIdx;
@@ -115,8 +121,9 @@ export function ChatView({
     for (let i = endIdx - 1; i >= 0; i--) {
       const msgLines = messageLineInfo[i]?.lines ?? 3;
 
-      // Reserve 1 line for scroll indicator if we'd hide messages
-      const indicatorLine = (i > 0 || scrollOffset > 0) ? 1 : 0;
+      // Reserve 1 line for "earlier messages" indicator only if this isn't the first message
+      const needsTopIndicator = i > 0;
+      const indicatorLine = needsTopIndicator ? 1 : 0;
       if (linesUsed + msgLines + indicatorLine > availableHeight) {
         break;
       }
