@@ -122,28 +122,30 @@ export function InputArea({
     );
   }
 
-  if (disabled) {
-    return (
-      <Box paddingX={1}>
-        <Text color="yellow">&gt; </Text>
-        <Text dimColor>Waiting for response...</Text>
-      </Box>
-    );
-  }
-
   // Calculate available width for input (subtract padding and prompt)
   const inputWidth = Math.max(10, width - 4);
 
+  // Show input field even while processing - user can type their next message
+  const promptColor = disabled ? 'yellow' : 'green';
+  const promptSymbol = disabled ? '◐' : '>';
+
   return (
-    <Box paddingX={1}>
-      <Text color="green">&gt; </Text>
-      <MultiLineInput
-        value={value}
-        onChange={onChange}
-        onSubmit={onSubmit}
-        width={inputWidth}
-        isActive={isActive}
-      />
+    <Box paddingX={1} flexDirection="column">
+      <Box>
+        <Text color={promptColor}>{promptSymbol} </Text>
+        <MultiLineInput
+          value={value}
+          onChange={onChange}
+          onSubmit={onSubmit}
+          width={inputWidth}
+          isActive={isActive}
+        />
+      </Box>
+      {disabled && (
+        <Box paddingLeft={2}>
+          <Text dimColor>(AI is responding... your message will be queued)</Text>
+        </Box>
+      )}
     </Box>
   );
 }

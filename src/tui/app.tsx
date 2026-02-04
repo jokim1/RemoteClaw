@@ -106,6 +106,7 @@ function App({ options }: AppProps) {
   const activeTalkIdRef = useRef<string | null>(null);
   useEffect(() => { activeTalkIdRef.current = activeTalkId; }, [activeTalkId]);
   const [chatScrollOffset, setChatScrollOffset] = useState(0);
+  const [messageQueue, setMessageQueue] = useState<string[]>([]);
 
   // --- TTS bridge ref (useChat → useVoice) ---
 
@@ -425,8 +426,24 @@ function App({ options }: AppProps) {
     }
 
     setInputText('');
+
+    // If already processing, queue the message
+    if (chat.isProcessing) {
+      setMessageQueue(prev => [...prev, trimmed]);
+      return;
+    }
+
     await chat.sendMessage(trimmed);
-  }, [chat.sendMessage]);
+  }, [chat.sendMessage, chat.isProcessing]);
+
+  // Process queued messages when AI finishes responding
+  useEffect(() => {
+    if (!chat.isProcessing && messageQueue.length > 0) {
+      const nextMessage = messageQueue[0];
+      setMessageQueue(prev => prev.slice(1));
+      chat.sendMessage(nextMessage);
+    }
+  }, [chat.isProcessing, messageQueue, chat.sendMessage]);
 
   // --- Keyboard shortcuts ---
 
