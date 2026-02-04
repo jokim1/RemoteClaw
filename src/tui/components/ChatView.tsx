@@ -141,7 +141,8 @@ export function ChatView({
         <Text dimColor>Welcome to RemoteClaw by Opus4.5 and Joseph Kim (@jokim1)</Text>
         <Text dimColor>Type a message to start chatting.</Text>
         <Text> </Text>
-        <Text dimColor>Additional Shortcuts: ^A Change AI Model  ^N New Terminal</Text>
+        <Text dimColor>Additional Shortcuts: ^A Change AI Model  ^Y New Terminal</Text>
+        <Text> </Text>
         <Text dimColor>Scroll: ↑/↓ arrows, Page Up/Down, g/G for top/bottom</Text>
       </Box>
     );
