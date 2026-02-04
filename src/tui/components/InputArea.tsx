@@ -4,7 +4,7 @@
  * Text input with > prompt, or voice recording/processing indicator
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { MultiLineInput } from './MultiLineInput.js';
 import type { VoiceMode, RealtimeVoiceState } from '../../types.js';
@@ -24,6 +24,19 @@ interface InputAreaProps {
   aiTranscript?: string;
   // Message queue
   queuedMessages?: string[];
+  // Processing timer
+  processingStartTime?: number | null;
+}
+
+/** Format elapsed time as "Xm Ys" or "Xs" */
+function formatElapsed(startTime: number): string {
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  if (elapsed < 60) {
+    return `${elapsed}s`;
+  }
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+  return `${minutes}m ${seconds}s`;
 }
 
 function VolumeMeter({ level }: { level: number }) {
@@ -54,7 +67,17 @@ export function InputArea({
   userTranscript,
   aiTranscript,
   queuedMessages = [],
+  processingStartTime,
 }: InputAreaProps) {
+  // Timer state for updating elapsed time display
+  const [, setTick] = useState(0);
+
+  // Update every second while processing
+  useEffect(() => {
+    if (!processingStartTime) return;
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [processingStartTime]);
   // Realtime live chat mode with transcripts
   if (voiceMode === 'liveChat') {
     const isAISpeaking = realtimeState === 'aiSpeaking';
@@ -134,6 +157,12 @@ export function InputArea({
 
   return (
     <Box paddingX={1} flexDirection="column">
+      {/* Show waiting timer when processing */}
+      {processingStartTime && (
+        <Box>
+          <Text dimColor>* Waiting for {formatElapsed(processingStartTime)}</Text>
+        </Box>
+      )}
       {/* Show queued messages */}
       {queuedMessages.length > 0 && (
         <Box flexDirection="column" marginBottom={0}>

@@ -9,7 +9,53 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import type { Message, Session, SearchResult } from '../../types';
 import type { SessionManager } from '../../services/sessions';
-import { formatRelativeTime, formatSessionTime, exportTranscript, estimateMessageLines } from '../utils.js';
+import { formatRelativeTime, formatSessionTime, exportTranscript } from '../utils.js';
+
+/** Truncate text content to fit within maxLines at given width */
+function truncateContent(text: string, maxLines: number, width: number): { content: string; truncated: boolean } {
+  if (!text || maxLines <= 0) return { content: '', truncated: false };
+
+  const usableWidth = Math.max(10, width - 6);
+  const lines: string[] = [];
+
+  for (const para of text.split('\n')) {
+    if (lines.length >= maxLines) break;
+
+    if (!para) {
+      lines.push('');
+      continue;
+    }
+
+    // Count visual lines for this paragraph
+    const visualLines = Math.ceil(para.length / usableWidth) || 1;
+
+    if (lines.length + visualLines <= maxLines) {
+      lines.push(para);
+    } else {
+      // Partial fit - truncate
+      const remainingLines = maxLines - lines.length;
+      const maxChars = remainingLines * usableWidth;
+      if (maxChars > 0) {
+        lines.push(para.slice(0, maxChars));
+      }
+      break;
+    }
+  }
+
+  const result = lines.join('\n');
+  return { content: result, truncated: result.length < text.length };
+}
+
+/** Count actual visual lines text will occupy */
+function countVisualLines(text: string, width: number): number {
+  if (!text) return 1;
+  const usableWidth = Math.max(10, width - 6);
+  let count = 0;
+  for (const line of text.split('\n')) {
+    count += Math.ceil(line.length / usableWidth) || 1;
+  }
+  return count;
+}
 
 type HubMode = 'list' | 'transcript' | 'search';
 
@@ -128,7 +174,8 @@ export function TranscriptHub({
   };
 
   // Transcript scrolling helpers
-  const transcriptHeaderLines = 4; // title + file path + blank + footer
+  // Account for: title (1) + path (1) + blank (1) + footer (1) + blank before footer (1) = 5 lines
+  const transcriptHeaderLines = 5;
   const transcriptVisibleRows = Math.max(3, maxHeight - transcriptHeaderLines);
 
   // Search scrolling helpers
@@ -390,22 +437,38 @@ export function TranscriptHub({
     const sessionDir = viewingSession ? sessionManager.getSessionDir(viewingSession.id) : '';
     const messages = transcriptMessages;
 
-    // Compute visible messages based on scroll offset
-    const visibleMessages: Message[] = [];
-    let linesUsed = 0;
-    for (let i = transcriptScrollOffset; i < messages.length; i++) {
+    const hasAbove = transcriptScrollOffset > 0;
+    // Fixed overhead: title(1) + path(1) + blank(1) + footer(1) + indicators(2) = 6 lines
+    const fixedOverhead = 6;
+    const availableForMessages = Math.max(3, transcriptVisibleRows - fixedOverhead);
+
+    // Compute visible messages with truncation budgets
+    type VisibleMsg = { msg: Message; maxLines: number };
+    const visibleMessages: VisibleMsg[] = [];
+    let linesRemaining = availableForMessages;
+
+    for (let i = transcriptScrollOffset; i < messages.length && linesRemaining > 1; i++) {
       const msg = messages[i];
-      const msgLines = estimateMessageLines(msg.content, terminalWidth);
-      if (linesUsed + msgLines > transcriptVisibleRows && visibleMessages.length > 0) break;
-      visibleMessages.push(msg);
-      linesUsed += msgLines;
+      const headerLine = 1; // [time] Role:
+      const contentLines = countVisualLines(msg.content, terminalWidth);
+      const totalLines = headerLine + contentLines;
+
+      if (totalLines <= linesRemaining) {
+        // Full message fits
+        visibleMessages.push({ msg, maxLines: contentLines });
+        linesRemaining -= totalLines;
+      } else if (linesRemaining > headerLine) {
+        // Partial fit - truncate content
+        const availableContent = linesRemaining - headerLine;
+        visibleMessages.push({ msg, maxLines: availableContent });
+        linesRemaining = 0;
+      }
     }
 
-    const hasAbove = transcriptScrollOffset > 0;
     const hasBelow = transcriptScrollOffset + visibleMessages.length < messages.length;
 
     return (
-      <Box flexDirection="column" paddingX={1}>
+      <Box flexDirection="column" paddingX={1} height={maxHeight}>
         <Text bold color="cyan">{sessionName} ({messages.length} message{messages.length !== 1 ? 's' : ''})</Text>
         <Text dimColor>  {sessionDir}/</Text>
 
@@ -418,29 +481,32 @@ export function TranscriptHub({
         {messages.length === 0 ? (
           <Text dimColor>No messages in this session.</Text>
         ) : (
-          <Box flexDirection="column" height={transcriptVisibleRows}>
+          <Box flexDirection="column">
             {hasAbove && <Text dimColor>  ▲ {transcriptScrollOffset} earlier message{transcriptScrollOffset !== 1 ? 's' : ''}</Text>}
+            {!hasAbove && <Text> </Text>}
 
-            {visibleMessages.map((msg) => {
+            {visibleMessages.map(({ msg, maxLines }) => {
               const time = new Date(msg.timestamp).toLocaleTimeString();
               const role = msg.role === 'user' ? 'You' : msg.role === 'system' ? 'System' : 'AI';
               const roleColor = msg.role === 'user' ? 'green' : msg.role === 'system' ? 'yellow' : 'cyan';
               const modelLabel = msg.model ? ` (${msg.model.split('/').pop()})` : '';
+              const { content, truncated } = truncateContent(msg.content, maxLines, terminalWidth);
 
               return (
-                <Box key={msg.id} flexDirection="column" marginBottom={1}>
+                <Box key={msg.id} flexDirection="column">
                   <Text>
                     <Text dimColor>[{time}] </Text>
                     <Text color={roleColor} bold>{role}{modelLabel}:</Text>
                   </Text>
                   <Box paddingLeft={2}>
-                    <Text wrap="wrap">{msg.content}</Text>
+                    <Text wrap="wrap">{content}{truncated ? <Text dimColor>...</Text> : null}</Text>
                   </Box>
                 </Box>
               );
             })}
 
             {hasBelow && <Text dimColor>  ▼ more messages below</Text>}
+            {!hasBelow && <Text> </Text>}
           </Box>
         )}
 

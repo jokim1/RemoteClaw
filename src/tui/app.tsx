@@ -41,6 +41,7 @@ import { useGateway } from './hooks/useGateway.js';
 import { useChat } from './hooks/useChat.js';
 import { useVoice } from './hooks/useVoice.js';
 import { useRealtimeVoice } from './hooks/useRealtimeVoice.js';
+import { writeMessageToScrollback } from './messageWriter.js';
 
 interface AppProps {
   options: RemoteClawOptions;
@@ -107,6 +108,7 @@ function App({ options }: AppProps) {
   useEffect(() => { activeTalkIdRef.current = activeTalkId; }, [activeTalkId]);
   const [chatScrollOffset, setChatScrollOffset] = useState(0);
   const [messageQueue, setMessageQueue] = useState<string[]>([]);
+  const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
 
   // --- TTS bridge ref (useChat → useVoice) ---
 
@@ -125,6 +127,15 @@ function App({ options }: AppProps) {
     pricingRef,
     activeTalkIdRef,
   );
+
+  // Track when processing starts/stops for timer display
+  useEffect(() => {
+    if (chat.isProcessing && !processingStartTime) {
+      setProcessingStartTime(Date.now());
+    } else if (!chat.isProcessing && processingStartTime) {
+      setProcessingStartTime(null);
+    }
+  }, [chat.isProcessing, processingStartTime]);
 
   const gateway = useGateway(
     chatServiceRef, voiceServiceRef, realtimeVoiceServiceRef, anthropicRLRef, currentModelRef,
@@ -171,6 +182,21 @@ function App({ options }: AppProps) {
     }
     prevMessageCountRef.current = chat.messages.length;
   }, [chat.messages.length]);
+
+  // Write completed messages to terminal scrollback
+  // This allows user to scroll up in terminal to see history
+  const writtenMessageCountRef = useRef(0);
+  useEffect(() => {
+    // Only write when not processing (so we don't write partial messages)
+    if (chat.isProcessing) return;
+
+    // Write any new messages to scrollback
+    const newMessages = chat.messages.slice(writtenMessageCountRef.current);
+    for (const msg of newMessages) {
+      writeMessageToScrollback(msg);
+    }
+    writtenMessageCountRef.current = chat.messages.length;
+  }, [chat.messages, chat.isProcessing]);
 
   // --- Service initialization ---
 
@@ -611,7 +637,7 @@ function App({ options }: AppProps) {
         <Text color="red">{error ? `! ${error}` : ' '}</Text>
       </Box>
 
-      <Box flexDirection="column" height={showModelPicker || showTranscript || showTalks || showSettings ? chatHeight : undefined} flexGrow={1} flexShrink={1} paddingX={1}>
+      <Box flexDirection="column" height={chatHeight} flexGrow={1} flexShrink={1} paddingX={1}>
         {showModelPicker ? (
           <ModelPicker
             models={pickerModels}
@@ -706,7 +732,7 @@ function App({ options }: AppProps) {
         <Text dimColor>{'─'.repeat(terminalWidth)}</Text>
       </Box>
 
-      <Box height={inputHeight + messageQueue.length} flexShrink={0} paddingX={1}>
+      <Box height={inputHeight + messageQueue.length + (processingStartTime ? 1 : 0)} flexShrink={0} paddingX={1}>
         <InputArea
           value={inputText}
           onChange={setInputText}
@@ -720,6 +746,7 @@ function App({ options }: AppProps) {
           userTranscript={realtimeVoice.userTranscript}
           aiTranscript={realtimeVoice.aiTranscript}
           queuedMessages={messageQueue}
+          processingStartTime={processingStartTime}
         />
       </Box>
 
@@ -731,20 +758,23 @@ function App({ options }: AppProps) {
 }
 
 export async function launchRemoteClaw(options: RemoteClawOptions): Promise<void> {
-  // Enable alternate screen buffer to prevent terminal scrolling
-  // This is what vim, htop, and other full-screen TUI apps use
+  // Hybrid approach:
+  // - Messages are written directly to terminal scrollback (user can scroll up)
+  // - Ink only manages the bottom area (streaming, input)
+  // - No alternate screen buffer so scrollback is accessible
   const stdout = process.stdout;
-  stdout.write('\x1b[?1049h'); // Enter alternate screen buffer
-  stdout.write('\x1b[?25l');   // Hide cursor (reduces flicker)
-  stdout.write('\x1b[H');      // Move cursor to home position
+
+  // Suppress console.debug to prevent scrollback pollution
+  const originalDebug = console.debug;
+  console.debug = () => {};
 
   const { waitUntilExit } = render(<App options={options} />, { exitOnCtrlC: false });
 
   try {
     await waitUntilExit();
   } finally {
-    // Restore normal terminal state
-    stdout.write('\x1b[?25h');   // Show cursor
-    stdout.write('\x1b[?1049l'); // Exit alternate screen buffer
+    // Restore console and cursor
+    console.debug = originalDebug;
+    stdout.write('\x1b[?25h'); // Show cursor
   }
 }
