@@ -46,6 +46,30 @@ export function estimateMessageLines(content: string, width: number): number {
   return 1 + contentLines;
 }
 
+/** Format elapsed time as "Xs" or "Xm Ys" */
+export function formatElapsed(startTime: number): string {
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  if (elapsed < 60) {
+    return `${elapsed}s`;
+  }
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
+/**
+ * Compute next processingStartTime given current chat state.
+ * Returns the new startTime value (number | null).
+ */
+export function nextProcessingTimerState(
+  isProcessing: boolean,
+  currentStartTime: number | null,
+): number | null {
+  if (isProcessing && !currentStartTime) return Date.now();
+  if (!isProcessing && currentStartTime) return null;
+  return currentStartTime;
+}
+
 export function formatRelativeTime(ts: number): string {
   const now = Date.now();
   const diff = now - ts;

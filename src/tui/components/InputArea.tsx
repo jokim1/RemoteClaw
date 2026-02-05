@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { MultiLineInput } from './MultiLineInput.js';
+import { formatElapsed } from '../utils.js';
 import type { VoiceMode, RealtimeVoiceState } from '../../types.js';
 
 interface InputAreaProps {
@@ -26,17 +27,6 @@ interface InputAreaProps {
   queuedMessages?: string[];
   // Processing timer
   processingStartTime?: number | null;
-}
-
-/** Format elapsed time as "Xm Ys" or "Xs" */
-function formatElapsed(startTime: number): string {
-  const elapsed = Math.floor((Date.now() - startTime) / 1000);
-  if (elapsed < 60) {
-    return `${elapsed}s`;
-  }
-  const minutes = Math.floor(elapsed / 60);
-  const seconds = elapsed % 60;
-  return `${minutes}m ${seconds}s`;
 }
 
 function VolumeMeter({ level }: { level: number }) {
