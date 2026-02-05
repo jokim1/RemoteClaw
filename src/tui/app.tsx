@@ -5,12 +5,13 @@
  * Composes custom hooks for gateway, chat, voice, and model management.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { render, Box, Text, useInput, useApp, useStdout } from 'ink';
-import type { RemoteClawOptions, ModelStatus } from '../types.js';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { render, Box, Text, Static, useInput, useApp, useStdout } from 'ink';
+import type { RemoteClawOptions, ModelStatus, Message } from '../types.js';
 import { StatusBar, ShortcutBar } from './components/StatusBar';
-import { ChatView } from './components/ChatView.js';
 import { InputArea } from './components/InputArea.js';
+import { StaticMessage } from './components/StaticMessage.js';
+import type { StaticItem, StaticItemInput } from './components/StaticMessage.js';
 import { ModelPicker } from './components/ModelPicker.js';
 import type { Model } from './components/ModelPicker.js';
 import { TranscriptHub } from './components/TranscriptHub';
@@ -36,6 +37,7 @@ import {
 } from '../models.js';
 import { DEFAULT_MODEL, RESIZE_DEBOUNCE_MS } from '../constants.js';
 import { createMessage, cleanInputChar } from './helpers.js';
+import { formatElapsed } from './utils.js';
 import { dispatchCommand } from './commands.js';
 import { useGateway } from './hooks/useGateway.js';
 import { useChat } from './hooks/useChat.js';
@@ -57,7 +59,6 @@ function App({ options }: AppProps) {
     width: stdout?.columns ?? 80,
     height: stdout?.rows ?? 24,
   });
-  const [resizeKey, setResizeKey] = useState(0);
   const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -65,7 +66,6 @@ function App({ options }: AppProps) {
       if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
       resizeTimeoutRef.current = setTimeout(() => {
         setDimensions({ width: stdout?.columns ?? 80, height: stdout?.rows ?? 24 });
-        setResizeKey(k => k + 1);
       }, RESIZE_DEBOUNCE_MS);
     };
     stdout?.on('resize', handleResize);
@@ -105,9 +105,22 @@ function App({ options }: AppProps) {
   const [activeTalkId, setActiveTalkId] = useState<string | null>(null);
   const activeTalkIdRef = useRef<string | null>(null);
   useEffect(() => { activeTalkIdRef.current = activeTalkId; }, [activeTalkId]);
-  const [chatScrollOffset, setChatScrollOffset] = useState(0);
   const [messageQueue, setMessageQueue] = useState<string[]>([]);
   const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
+
+  // --- Static items (append-only list for Ink's <Static>) ---
+
+  const [staticItems, setStaticItems] = useState<StaticItem[]>([]);
+  const nextStaticIdRef = useRef(0);
+  const pushStatic = useCallback((...items: StaticItemInput[]) => {
+    setStaticItems(prev => [
+      ...prev,
+      ...items.map(item => ({ ...item, id: String(nextStaticIdRef.current++) } as StaticItem)),
+    ]);
+  }, []);
+
+  // Ref for useChat to notify when messages complete
+  const onMessageCompleteRef = useRef<((msg: Message) => void) | null>(null);
 
   // --- TTS bridge ref (useChat → useVoice) ---
 
@@ -125,7 +138,13 @@ function App({ options }: AppProps) {
     (err) => setModelStatus({ error: err }),
     pricingRef,
     activeTalkIdRef,
+    onMessageCompleteRef,
   );
+
+  // Wire onMessageComplete: push completed messages to Static
+  onMessageCompleteRef.current = useCallback((msg: Message) => {
+    pushStatic({ type: 'message', message: msg });
+  }, [pushStatic]);
 
   // Track when processing starts/stops for timer display
   useEffect(() => {
@@ -135,6 +154,14 @@ function App({ options }: AppProps) {
       setProcessingStartTime(null);
     }
   }, [chat.isProcessing, processingStartTime]);
+
+  // Tick timer every second while processing (for "Waiting for Xs" display)
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!processingStartTime) return;
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [processingStartTime]);
 
   const gateway = useGateway(
     chatServiceRef, voiceServiceRef, realtimeVoiceServiceRef, anthropicRLRef, currentModelRef,
@@ -172,15 +199,6 @@ function App({ options }: AppProps) {
 
   // Wire TTS: when chat receives an assistant response, speak it
   speakResponseRef.current = voice.speakResponse;
-
-  // Auto-scroll to bottom when new messages arrive
-  const prevMessageCountRef = useRef(chat.messages.length);
-  useEffect(() => {
-    if (chat.messages.length > prevMessageCountRef.current) {
-      setChatScrollOffset(0); // Scroll to bottom
-    }
-    prevMessageCountRef.current = chat.messages.length;
-  }, [chat.messages.length]);
 
   // --- Service initialization ---
 
@@ -236,6 +254,13 @@ function App({ options }: AppProps) {
       chat.setMessages(msgs);
       setCurrentModel(model);
       setSessionName(name);
+
+      // Push existing session messages + welcome to Static
+      const items: StaticItemInput[] = [{ type: 'welcome' as const }];
+      for (const msg of msgs) {
+        items.push({ type: 'message' as const, message: msg });
+      }
+      pushStatic(...items);
     });
 
     if (chatServiceRef.current && session.model) {
@@ -265,11 +290,15 @@ function App({ options }: AppProps) {
       if (controller.signal.aborted) return;
       if (result.ok) {
         setModelStatus('ok');
-        chat.setMessages(prev => [...prev, createMessage('system', `${getModelAlias(modelId)} is responding. Ready.`)]);
+        const sysMsg = createMessage('system', `${getModelAlias(modelId)} is responding. Ready.`);
+        chat.setMessages(prev => [...prev, sysMsg]);
+        pushStatic({ type: 'message', message: sysMsg });
       } else {
         setModelStatus({ error: result.reason });
         setError(result.reason);
-        chat.setMessages(prev => [...prev, createMessage('system', `Model probe failed: ${result.reason}`)]);
+        const sysMsg = createMessage('system', `Model probe failed: ${result.reason}`);
+        chat.setMessages(prev => [...prev, sysMsg]);
+        pushStatic({ type: 'message', message: sysMsg });
         // Revert to previous model on probe failure
         if (previousModel) {
           setCurrentModel(previousModel);
@@ -304,12 +333,14 @@ function App({ options }: AppProps) {
       talkManagerRef.current.setModel(activeTalkIdRef.current, modelId);
     }
 
-    chat.setMessages(prev => [...prev, createMessage('system', `Switched to ${getModelAlias(modelId)}. Checking connection...`)]);
+    const sysMsg = createMessage('system', `Switched to ${getModelAlias(modelId)}. Checking connection...`);
+    chat.setMessages(prev => [...prev, sysMsg]);
+    pushStatic({ type: 'message', message: sysMsg });
     setError(null);
 
     chatServiceRef.current?.setModelOverride(modelId).catch(() => {});
     probeCurrentModel(modelId, previousModel);
-  }, [probeCurrentModel]);
+  }, [probeCurrentModel, pushStatic]);
 
   const selectModel = useCallback((modelId: string) => {
     setShowModelPicker(false);
@@ -334,29 +365,29 @@ function App({ options }: AppProps) {
     if (activeTalkId && talkManagerRef.current) {
       const success = talkManagerRef.current.saveTalk(activeTalkId);
       if (success) {
-        // If title provided, also set it
-        if (title) {
-          talkManagerRef.current.setTopicTitle(activeTalkId, title);
-          chat.setMessages(prev => [...prev, createMessage('system', `Chat saved as "${title}"`)]);
-        } else {
-          chat.setMessages(prev => [...prev, createMessage('system', 'Chat saved to Talks.')]);
-        }
+        const text = title ? `Chat saved as "${title}"` : 'Chat saved to Talks.';
+        if (title) talkManagerRef.current.setTopicTitle(activeTalkId, title);
+        const sysMsg = createMessage('system', text);
+        chat.setMessages(prev => [...prev, sysMsg]);
+        pushStatic({ type: 'message', message: sysMsg });
       } else {
         setError('Failed to save talk');
       }
     }
-  }, [activeTalkId]);
+  }, [activeTalkId, pushStatic]);
 
   const handleSetTopicTitle = useCallback((title: string) => {
     if (activeTalkId && talkManagerRef.current) {
       const success = talkManagerRef.current.setTopicTitle(activeTalkId, title);
       if (success) {
-        chat.setMessages(prev => [...prev, createMessage('system', `Topic set to: ${title}`)]);
+        const sysMsg = createMessage('system', `Topic set to: ${title}`);
+        chat.setMessages(prev => [...prev, sysMsg]);
+        pushStatic({ type: 'message', message: sysMsg });
       } else {
         setError('Failed to set topic');
       }
     }
-  }, [activeTalkId]);
+  }, [activeTalkId, pushStatic]);
 
   const handleNewChat = useCallback(() => {
     // Update context MD for current talk before creating new chat
@@ -375,9 +406,14 @@ function App({ options }: AppProps) {
 
       chat.setMessages([]);
       setSessionName(session.name);
-      chat.setMessages(prev => [...prev, createMessage('system', 'New chat started.')]);
+      const sysMsg = createMessage('system', 'New chat started.');
+      chat.setMessages(prev => [...prev, sysMsg]);
+      pushStatic(
+        { type: 'divider', text: '─── New Chat ───' },
+        { type: 'message', message: sysMsg },
+      );
     }
-  }, [activeTalkId, chat.messages, currentModel]);
+  }, [activeTalkId, chat.messages, currentModel, pushStatic]);
 
   const handleSelectTalk = useCallback((talk: Talk) => {
     // Update context MD for current talk before switching
@@ -394,6 +430,16 @@ function App({ options }: AppProps) {
       talkManagerRef.current?.setActiveTalk(talk.id);
       talkManagerRef.current?.touchTalk(talk.id);
 
+      // Push divider + all messages from the switched-to talk into Static
+      const talkLabel = talk.topicTitle || session.name || 'Talk';
+      const items: StaticItemInput[] = [
+        { type: 'divider' as const, text: `─── ${talkLabel} ───` },
+      ];
+      for (const msg of session.messages) {
+        items.push({ type: 'message' as const, message: msg });
+      }
+      pushStatic(...items);
+
       // Restore the model from the talk if it has one
       if (talk.model) {
         switchModel(talk.model);
@@ -401,7 +447,7 @@ function App({ options }: AppProps) {
 
       setShowTalks(false);
     }
-  }, [activeTalkId, chat.messages, switchModel]);
+  }, [activeTalkId, chat.messages, switchModel, pushStatic]);
 
   // --- Submit handler (command registry + chat) ---
 
@@ -568,40 +614,179 @@ function App({ options }: AppProps) {
 
   // --- Layout ---
 
-  const headerHeight = 2;
-  const inputSeparatorHeight = 1;
-  const shortcutBarHeight = 2;
-  // Always reserve 1 line for error to prevent layout shifts
-  const errorHeight = 1;
+  // Cap streaming display to prevent the dynamic area from exceeding terminal height.
+  // Reserve lines for: status(2) + error(1) + separator(1) + input(~2) + shortcuts(2) + margin(2)
+  const maxStreamingLines = Math.max(4, terminalHeight - 10);
 
-  const inputPadding = 4;
-  const promptWidth = 2;
-  const availableInputWidth = Math.max(1, terminalWidth - inputPadding - promptWidth);
-  const inputHeight = Math.max(1, Math.ceil((inputText.length + 1) / availableInputWidth));
+  // Truncate streaming content to last N lines for display
+  const cappedStreaming = useMemo(() => {
+    if (!chat.streamingContent) return '';
+    const lines = chat.streamingContent.split('\n');
+    if (lines.length <= maxStreamingLines) return chat.streamingContent;
+    return lines.slice(-maxStreamingLines).join('\n');
+  }, [chat.streamingContent, maxStreamingLines]);
 
-  // Account for terminalHeight - 1 in the outer container (to prevent Ink overflow)
-  const queuedHeight = messageQueue.length;
-  const chatHeight = Math.max(3, (terminalHeight - 1) - headerHeight - inputSeparatorHeight - inputHeight - queuedHeight - shortcutBarHeight - errorHeight);
-  const layoutKey = `${terminalWidth}x${terminalHeight}-${resizeKey}`;
+  // Overlay max height (for model picker, talks, transcript, settings)
+  const overlayMaxHeight = Math.max(6, terminalHeight - 6);
+
+  const isOverlayActive = showModelPicker || showTranscript || showTalks || showSettings;
 
   // --- Render ---
 
-  // Show loading state until gateway is initialized to prevent layout shifts
-  // The multiple state updates during startup cause re-renders that shift the UI
+  // Show loading state until gateway is initialized
   if (!gateway.isInitialized) {
     return (
-      <Box flexDirection="column" width={terminalWidth} height={terminalHeight - 1}>
-        <Box height={2} paddingX={1}>
+      <Box flexDirection="column" width={terminalWidth}>
+        <Box paddingX={1}>
           <Text dimColor>Starting RemoteClaw...</Text>
         </Box>
       </Box>
     );
   }
 
-  // Use terminalHeight - 1 to prevent Ink's trailing newline from causing scroll
   return (
-    <Box flexDirection="column" width={terminalWidth} height={terminalHeight - 1}>
-      <Box height={2} flexShrink={0}>
+    <>
+      {/* Static area: completed messages scroll into terminal scrollback */}
+      <Static items={staticItems}>
+        {(item) => {
+          if (item.type === 'divider') {
+            return (
+              <Box key={item.id}>
+                <Text dimColor>{item.text}</Text>
+              </Box>
+            );
+          }
+          if (item.type === 'welcome') {
+            return (
+              <Box key={item.id} flexDirection="column">
+                <Text dimColor>Welcome to RemoteClaw by Opus4.5 and Joseph Kim (@jokim1)</Text>
+                <Text dimColor>Type a message to start chatting.</Text>
+                <Text> </Text>
+                <Text dimColor>^T Talks  ^N New  ^C Chat  ^P PTT  ^V Voice  ^H History  ^S Settings</Text>
+              </Box>
+            );
+          }
+          return <StaticMessage key={item.id} message={item.message} />;
+        }}
+      </Static>
+
+      {/* Dynamic area: streaming + overlays + status + input + shortcuts */}
+      <Box flexDirection="column" width={terminalWidth}>
+        {/* Overlay screens (replace streaming/chat content when active) */}
+        {showModelPicker ? (
+          <Box paddingX={1}>
+            <ModelPicker
+              models={pickerModels}
+              currentModel={currentModel}
+              onSelect={selectModel}
+              onClose={() => setShowModelPicker(false)}
+              maxHeight={overlayMaxHeight}
+            />
+          </Box>
+        ) : showTranscript ? (
+          <Box paddingX={1}>
+            <TranscriptHub
+              currentMessages={chat.messages}
+              currentSessionName={sessionName}
+              sessionManager={sessionManagerRef.current!}
+              maxHeight={overlayMaxHeight}
+              terminalWidth={terminalWidth}
+              onClose={() => setShowTranscript(false)}
+              onNewChat={() => { setShowTranscript(false); handleNewChat(); }}
+              onToggleTts={() => { voice.handleTtsToggle?.(); }}
+              onOpenTalks={() => { setShowTranscript(false); setShowTalks(true); }}
+              onOpenSettings={() => { setShowTranscript(false); setShowSettings(true); }}
+              onExit={() => { voiceServiceRef.current?.cleanup(); exit(); }}
+              setError={setError}
+            />
+          </Box>
+        ) : showTalks ? (
+          <Box paddingX={1}>
+            <TalksHub
+              talkManager={talkManagerRef.current!}
+              sessionManager={sessionManagerRef.current!}
+              maxHeight={overlayMaxHeight}
+              terminalWidth={terminalWidth}
+              onClose={() => setShowTalks(false)}
+              onSelectTalk={handleSelectTalk}
+              onNewChat={() => { setShowTalks(false); handleNewChat(); }}
+              onToggleTts={() => { voice.handleTtsToggle?.(); }}
+              onOpenHistory={() => { setShowTalks(false); setShowTranscript(true); }}
+              onOpenSettings={() => { setShowTalks(false); setShowSettings(true); }}
+              onOpenModelPicker={() => { setShowTalks(false); setShowModelPicker(true); }}
+              onNewTerminal={() => { spawnNewTerminalWindow(options); }}
+              onExit={() => { voiceServiceRef.current?.cleanup(); exit(); }}
+              setError={setError}
+            />
+          </Box>
+        ) : showSettings ? (
+          <Box paddingX={1}>
+            <SettingsPicker
+              onClose={() => setShowSettings(false)}
+              onNewChat={() => { setShowSettings(false); handleNewChat(); }}
+              onToggleTts={() => { voice.handleTtsToggle?.(); }}
+              onOpenTalks={() => { setShowSettings(false); setShowTalks(true); }}
+              onOpenHistory={() => { setShowSettings(false); setShowTranscript(true); }}
+              onExit={() => { voiceServiceRef.current?.cleanup(); realtimeVoiceServiceRef.current?.cleanup(); exit(); }}
+              setError={setError}
+              voiceCaps={{
+                sttProviders: gateway.voiceCaps.sttProviders ?? [],
+                sttActiveProvider: gateway.voiceCaps.sttProvider,
+                ttsProviders: gateway.voiceCaps.ttsProviders ?? [],
+                ttsActiveProvider: gateway.voiceCaps.ttsProvider,
+              }}
+              onSttProviderChange={async (provider) => {
+                const success = await voiceServiceRef.current?.setSttProvider(provider);
+                if (success) {
+                  voiceServiceRef.current?.fetchCapabilities();
+                }
+                return success ?? false;
+              }}
+              onTtsProviderChange={async (provider) => {
+                const success = await voiceServiceRef.current?.setTtsProvider(provider);
+                if (success) {
+                  voiceServiceRef.current?.fetchCapabilities();
+                }
+                return success ?? false;
+              }}
+              realtimeVoiceCaps={gateway.realtimeVoiceCaps}
+              realtimeProvider={realtimeVoice.provider}
+              onRealtimeProviderChange={realtimeVoice.setProvider}
+            />
+          </Box>
+        ) : (
+          <>
+            {/* Streaming response (only while processing) */}
+            {chat.isProcessing && (
+              <Box flexDirection="column" paddingX={1}>
+                <Text color="cyan" bold>{getModelAlias(currentModel)}:</Text>
+                <Box paddingLeft={2}>
+                  {cappedStreaming ? (
+                    <Text wrap="wrap">{cappedStreaming}<Text color="cyan">▌</Text></Text>
+                  ) : (
+                    <Text color="gray">thinking...</Text>
+                  )}
+                </Box>
+              </Box>
+            )}
+
+            {/* Processing timer */}
+            {processingStartTime && (
+              <Box paddingX={1}>
+                <Text dimColor>* Waiting for {formatElapsed(processingStartTime)}</Text>
+              </Box>
+            )}
+          </>
+        )}
+
+        {/* Error line */}
+        {error && (
+          <Box paddingX={1}>
+            <Text color="red">! {error}</Text>
+          </Box>
+        )}
+
+        {/* Status bar */}
         <StatusBar
           gatewayStatus={gateway.gatewayStatus}
           tailscaleStatus={gateway.tailscaleStatus}
@@ -615,146 +800,55 @@ function App({ options }: AppProps) {
           voiceReadiness={gateway.voiceCaps.readiness}
           ttsEnabled={voice.ttsEnabled}
         />
-      </Box>
 
-      <Box height={1} flexShrink={0} paddingX={1}>
-        <Text color="red">{error ? `! ${error}` : ' '}</Text>
-      </Box>
-
-      <Box flexDirection="column" height={chatHeight} flexGrow={1} flexShrink={1} paddingX={1}>
-        {showModelPicker ? (
-          <ModelPicker
-            models={pickerModels}
-            currentModel={currentModel}
-            onSelect={selectModel}
-            onClose={() => setShowModelPicker(false)}
-            maxHeight={chatHeight}
-          />
-        ) : showTranscript ? (
-          <TranscriptHub
-            currentMessages={chat.messages}
-            currentSessionName={sessionName}
-            sessionManager={sessionManagerRef.current!}
-            maxHeight={chatHeight}
-            terminalWidth={terminalWidth}
-            onClose={() => setShowTranscript(false)}
-            onNewChat={() => { setShowTranscript(false); handleNewChat(); }}
-            onToggleTts={() => { voice.handleTtsToggle?.(); }}
-            onOpenTalks={() => { setShowTranscript(false); setShowTalks(true); }}
-            onOpenSettings={() => { setShowTranscript(false); setShowSettings(true); }}
-            onExit={() => { voiceServiceRef.current?.cleanup(); exit(); }}
-            setError={setError}
-          />
-        ) : showTalks ? (
-          <TalksHub
-            talkManager={talkManagerRef.current!}
-            sessionManager={sessionManagerRef.current!}
-            maxHeight={chatHeight}
-            terminalWidth={terminalWidth}
-            onClose={() => setShowTalks(false)}
-            onSelectTalk={handleSelectTalk}
-            onNewChat={() => { setShowTalks(false); handleNewChat(); }}
-            onToggleTts={() => { voice.handleTtsToggle?.(); }}
-            onOpenHistory={() => { setShowTalks(false); setShowTranscript(true); }}
-            onOpenSettings={() => { setShowTalks(false); setShowSettings(true); }}
-            onOpenModelPicker={() => { setShowTalks(false); setShowModelPicker(true); }}
-            onNewTerminal={() => { spawnNewTerminalWindow(options); }}
-            onExit={() => { voiceServiceRef.current?.cleanup(); exit(); }}
-            setError={setError}
-          />
-        ) : showSettings ? (
-          <SettingsPicker
-            onClose={() => setShowSettings(false)}
-            onNewChat={() => { setShowSettings(false); handleNewChat(); }}
-            onToggleTts={() => { voice.handleTtsToggle?.(); }}
-            onOpenTalks={() => { setShowSettings(false); setShowTalks(true); }}
-            onOpenHistory={() => { setShowSettings(false); setShowTranscript(true); }}
-            onExit={() => { voiceServiceRef.current?.cleanup(); realtimeVoiceServiceRef.current?.cleanup(); exit(); }}
-            setError={setError}
-            voiceCaps={{
-              sttProviders: gateway.voiceCaps.sttProviders ?? [],
-              sttActiveProvider: gateway.voiceCaps.sttProvider,
-              ttsProviders: gateway.voiceCaps.ttsProviders ?? [],
-              ttsActiveProvider: gateway.voiceCaps.ttsProvider,
-            }}
-            onSttProviderChange={async (provider) => {
-              const success = await voiceServiceRef.current?.setSttProvider(provider);
-              if (success) {
-                // Refresh capabilities to get updated provider
-                voiceServiceRef.current?.fetchCapabilities();
-              }
-              return success ?? false;
-            }}
-            onTtsProviderChange={async (provider) => {
-              const success = await voiceServiceRef.current?.setTtsProvider(provider);
-              if (success) {
-                // Refresh capabilities to get updated provider
-                voiceServiceRef.current?.fetchCapabilities();
-              }
-              return success ?? false;
-            }}
-            realtimeVoiceCaps={gateway.realtimeVoiceCaps}
-            realtimeProvider={realtimeVoice.provider}
-            onRealtimeProviderChange={realtimeVoice.setProvider}
-          />
-        ) : (
-          <ChatView
-            messages={chat.messages}
-            isProcessing={chat.isProcessing}
-            streamingContent={chat.streamingContent}
-            modelAlias={getModelAlias(currentModel)}
-            maxHeight={chatHeight}
-            terminalWidth={terminalWidth}
-            scrollOffset={chatScrollOffset}
-            onScroll={setChatScrollOffset}
-            isActive={!showModelPicker && !showTranscript && !showTalks && !showSettings}
-          />
-        )}
-      </Box>
-
-      <Box height={1} flexShrink={0}>
+        {/* Separator */}
         <Text dimColor>{'─'.repeat(terminalWidth)}</Text>
-      </Box>
 
-      <Box height={inputHeight + messageQueue.length + (processingStartTime ? 1 : 0)} flexShrink={0} paddingX={1}>
-        <InputArea
-          value={inputText}
-          onChange={setInputText}
-          onSubmit={handleSubmit}
-          disabled={chat.isProcessing}
-          voiceMode={realtimeVoice.isActive ? 'liveChat' : voice.voiceMode}
-          volumeLevel={realtimeVoice.isActive ? realtimeVoice.volumeLevel : voice.volumeLevel}
-          width={terminalWidth - 2}
-          isActive={!showModelPicker && !showTranscript && !showTalks && !showSettings}
-          realtimeState={realtimeVoice.state}
-          userTranscript={realtimeVoice.userTranscript}
-          aiTranscript={realtimeVoice.aiTranscript}
-          queuedMessages={messageQueue}
-          processingStartTime={processingStartTime}
-        />
-      </Box>
+        {/* Queued messages */}
+        {messageQueue.length > 0 && (
+          <Box flexDirection="column" paddingX={1}>
+            {messageQueue.map((msg, idx) => (
+              <Box key={idx}>
+                <Text dimColor>queued: </Text>
+                <Text color="gray">{msg.length > 60 ? msg.slice(0, 60) + '...' : msg}</Text>
+              </Box>
+            ))}
+          </Box>
+        )}
 
-      <Box height={2} flexShrink={0}>
+        {/* Input area */}
+        <Box paddingX={1}>
+          <InputArea
+            value={inputText}
+            onChange={setInputText}
+            onSubmit={handleSubmit}
+            disabled={chat.isProcessing}
+            voiceMode={realtimeVoice.isActive ? 'liveChat' : voice.voiceMode}
+            volumeLevel={realtimeVoice.isActive ? realtimeVoice.volumeLevel : voice.volumeLevel}
+            width={terminalWidth - 2}
+            isActive={!isOverlayActive}
+            realtimeState={realtimeVoice.state}
+            userTranscript={realtimeVoice.userTranscript}
+            aiTranscript={realtimeVoice.aiTranscript}
+          />
+        </Box>
+
+        {/* Shortcut bar */}
         <ShortcutBar terminalWidth={terminalWidth} ttsEnabled={voice.ttsEnabled} />
       </Box>
-    </Box>
+    </>
   );
 }
 
 export async function launchRemoteClaw(options: RemoteClawOptions): Promise<void> {
-  // Use alternate screen buffer for clean, stable TUI
-  // User can view message history via ^H History
-  const stdout = process.stdout;
-  stdout.write('\x1b[?1049h'); // Enter alternate screen buffer
-  stdout.write('\x1b[H');      // Move cursor to home
-
+  // Render into the normal terminal buffer (not alternate screen).
+  // Completed messages scroll into native terminal scrollback via <Static>.
   const { waitUntilExit } = render(<App options={options} />, { exitOnCtrlC: false });
 
   try {
     await waitUntilExit();
   } finally {
     // Restore terminal state
-    stdout.write('\x1b[?25h');   // Show cursor
-    stdout.write('\x1b[?1049l'); // Exit alternate screen buffer
+    process.stdout.write('\x1b[?25h'); // Show cursor
   }
 }

@@ -27,6 +27,7 @@ export function useChat(
   onModelError: (error: string) => void,
   pricingRef: MutableRefObject<ModelPricing>,
   activeTalkIdRef: MutableRefObject<string | null>,
+  onMessageComplete?: MutableRefObject<((msg: Message) => void) | null>,
 ) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -58,6 +59,7 @@ export function useChat(
     const userMsg = createMessage('user', trimmed);
     setMessages(prev => [...prev, userMsg]);
     sessionManagerRef.current?.addMessage(userMsg);
+    onMessageComplete?.current?.(userMsg);
 
     isProcessingRef.current = true;
     setIsProcessing(true);
@@ -99,7 +101,9 @@ export function useChat(
       const looksLikeError = /^(Connection error|Error:|Failed to|Cannot connect|Timeout)/i.test(fullContent.trim());
       if (looksLikeError) {
         if (isStillOnSameTalk()) {
-          setMessages(prev => [...prev, createMessage('system', `Gateway error: ${fullContent}`)]);
+          const sysMsg = createMessage('system', `Gateway error: ${fullContent}`);
+          setMessages(prev => [...prev, sysMsg]);
+          onMessageComplete?.current?.(sysMsg);
           setStreamingContent('');
         }
         return;
@@ -117,12 +121,15 @@ export function useChat(
         // Only update UI and speak if still on the same talk
         if (isStillOnSameTalk()) {
           setMessages(prev => [...prev, assistantMsg]);
+          onMessageComplete?.current?.(assistantMsg);
           speakResponseRef.current?.(fullContent);
         }
       } else if (!fullContent.trim()) {
         // Gateway returned empty response even after fallback
         if (isStillOnSameTalk()) {
-          setMessages(prev => [...prev, createMessage('system', 'No response received from AI. The model may be unavailable or the connection was interrupted.')]);
+          const sysMsg = createMessage('system', 'No response received from AI. The model may be unavailable or the connection was interrupted.');
+          setMessages(prev => [...prev, sysMsg]);
+          onMessageComplete?.current?.(sysMsg);
         }
       }
 
@@ -144,7 +151,9 @@ export function useChat(
 
       if (isStillOnSameTalk()) {
         setErrorRef.current(errorMessage);
-        setMessages(prev => [...prev, createMessage('system', `Error: ${errorMessage}`)]);
+        const sysMsg = createMessage('system', `Error: ${errorMessage}`);
+        setMessages(prev => [...prev, sysMsg]);
+        onMessageComplete?.current?.(sysMsg);
       }
 
       if (/\b(40[1349]|429|5\d{2})\b/.test(errorMessage)) {

@@ -4,10 +4,9 @@
  * Text input with > prompt, or voice recording/processing indicator
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Box, Text } from 'ink';
 import { MultiLineInput } from './MultiLineInput.js';
-import { formatElapsed } from '../utils.js';
 import type { VoiceMode, RealtimeVoiceState } from '../../types.js';
 
 interface InputAreaProps {
@@ -23,10 +22,6 @@ interface InputAreaProps {
   realtimeState?: RealtimeVoiceState;
   userTranscript?: string;
   aiTranscript?: string;
-  // Message queue
-  queuedMessages?: string[];
-  // Processing timer
-  processingStartTime?: number | null;
 }
 
 function VolumeMeter({ level }: { level: number }) {
@@ -56,18 +51,7 @@ export function InputArea({
   realtimeState,
   userTranscript,
   aiTranscript,
-  queuedMessages = [],
-  processingStartTime,
 }: InputAreaProps) {
-  // Timer state for updating elapsed time display
-  const [, setTick] = useState(0);
-
-  // Update every second while processing
-  useEffect(() => {
-    if (!processingStartTime) return;
-    const interval = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(interval);
-  }, [processingStartTime]);
   // Realtime live chat mode with transcripts
   if (voiceMode === 'liveChat') {
     const isAISpeaking = realtimeState === 'aiSpeaking';
@@ -146,34 +130,15 @@ export function InputArea({
   const promptSymbol = disabled ? '◐' : '>';
 
   return (
-    <Box paddingX={1} flexDirection="column">
-      {/* Show waiting timer when processing */}
-      {processingStartTime && (
-        <Box>
-          <Text dimColor>* Waiting for {formatElapsed(processingStartTime)}</Text>
-        </Box>
-      )}
-      {/* Show queued messages */}
-      {queuedMessages.length > 0 && (
-        <Box flexDirection="column" marginBottom={0}>
-          {queuedMessages.map((msg, idx) => (
-            <Box key={idx}>
-              <Text dimColor>queued: </Text>
-              <Text color="gray">{msg.length > 60 ? msg.slice(0, 60) + '...' : msg}</Text>
-            </Box>
-          ))}
-        </Box>
-      )}
-      <Box>
-        <Text color={promptColor}>{promptSymbol} </Text>
-        <MultiLineInput
-          value={value}
-          onChange={onChange}
-          onSubmit={onSubmit}
-          width={inputWidth}
-          isActive={isActive}
-        />
-      </Box>
+    <Box>
+      <Text color={promptColor}>{promptSymbol} </Text>
+      <MultiLineInput
+        value={value}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        width={inputWidth}
+        isActive={isActive}
+      />
     </Box>
   );
 }

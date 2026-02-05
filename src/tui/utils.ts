@@ -6,46 +6,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Message } from '../types';
 
-export function estimateMessageLines(content: string, width: number): number {
-  if (!content) return 2;
-
-  // Account for paddingX(1) on chat area + paddingLeft(2) on message content
-  const usableWidth = Math.max(15, width - 6);
-  const paragraphs = content.split('\n');
-  let contentLines = 0;
-
-  for (const para of paragraphs) {
-    if (!para.trim()) {
-      contentLines += 1;
-      continue;
-    }
-
-    const words = para.split(/\s+/);
-    let currentLineLength = 0;
-    let paraLines = 1;
-
-    for (const word of words) {
-      const wordLength = word.length;
-
-      if (wordLength > usableWidth) {
-        const wordWraps = Math.ceil(wordLength / usableWidth);
-        paraLines += wordWraps - 1;
-        currentLineLength = wordLength % usableWidth || usableWidth;
-      } else if (currentLineLength + wordLength + 1 > usableWidth) {
-        paraLines++;
-        currentLineLength = wordLength;
-      } else {
-        currentLineLength += wordLength + 1;
-      }
-    }
-
-    contentLines += paraLines;
-  }
-
-  // 1 line for speaker name + content lines (be less conservative to fit more messages)
-  return 1 + contentLines;
-}
-
 /** Format elapsed time as "Xs" or "Xm Ys" */
 export function formatElapsed(startTime: number): string {
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
