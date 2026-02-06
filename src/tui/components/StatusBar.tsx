@@ -133,33 +133,41 @@ interface ShortcutBarProps {
 }
 
 export function ShortcutBar({ terminalWidth = 80, ttsEnabled = true }: ShortcutBarProps) {
-  const shortcuts = [
-    { key: '^T', label: 'Talks' },
-    { key: '^N', label: 'New' },
-    { key: '^C', label: 'Chat' },
-    { key: '^P', label: 'PTT' },
+  const row1 = [
+    { key: '^T', label: 'Talks List' },
+    { key: '^N', label: 'New Talk' },
+    { key: '^C', label: 'Live Chat' },
+    { key: '^P', label: 'Push-to-Talk' },
     { key: '^V', label: ttsEnabled ? 'Voice OFF' : 'Voice ON' },
-    { key: '^H', label: 'History' },
+  ];
+  const row2 = [
+    { key: '^A', label: 'AI Model' },
+    { key: '^H', label: 'Msg History' },
+    { key: '^Y', label: 'New Terminal' },
     { key: '^S', label: 'Settings' },
     { key: '^X', label: 'Exit' },
   ];
 
-  const separator = '─'.repeat(terminalWidth);
+  const colWidth = Math.floor(terminalWidth / 5);
 
-  // Use flexbox space-between to distribute shortcuts evenly
+  const renderRow = (items: { key: string; label: string }[]) => (
+    <Box height={1}>
+      {items.map((s) => (
+        <Box key={s.key} width={colWidth}>
+          <Text inverse bold> {s.key} </Text>
+          <Text> {s.label}</Text>
+        </Box>
+      ))}
+    </Box>
+  );
+
   return (
-    <Box flexDirection="column" width={terminalWidth} height={2}>
+    <Box flexDirection="column" width={terminalWidth} height={3}>
       <Box height={1}>
-        <Text dimColor>{separator}</Text>
+        <Text dimColor>{'─'.repeat(terminalWidth)}</Text>
       </Box>
-      <Box height={1} justifyContent="space-between" paddingX={1}>
-        {shortcuts.map((s) => (
-          <Box key={s.key}>
-            <Text inverse> {s.key} </Text>
-            <Text> {s.label}</Text>
-          </Box>
-        ))}
-      </Box>
+      {renderRow(row1)}
+      {renderRow(row2)}
     </Box>
   );
 }

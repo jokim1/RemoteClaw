@@ -14,6 +14,17 @@ export interface CommandContext {
   setError: (error: string | null) => void;
   saveTalk: (title?: string) => void;
   setTopicTitle: (title: string) => void;
+  pinMessage: (fromBottom?: number) => void;
+  unpinMessage: (fromBottom?: number) => void;
+  listPins: () => void;
+  addJob: (schedule: string, prompt: string) => void;
+  listJobs: () => void;
+  pauseJob: (index: number) => void;
+  resumeJob: (index: number) => void;
+  deleteJob: (index: number) => void;
+  setObjective: (text: string | undefined) => void;
+  showObjective: () => void;
+  viewReports: (jobIndex?: number) => void;
 }
 
 export interface CommandResult {
@@ -21,6 +32,11 @@ export interface CommandResult {
 }
 
 type CommandHandler = (args: string, ctx: CommandContext) => CommandResult;
+
+export interface CommandInfo {
+  name: string;
+  description: string;
+}
 
 /** Handle /model <alias|id> — switch the active model. */
 function handleModelCommand(args: string, ctx: CommandContext): CommandResult {
@@ -47,13 +63,113 @@ function handleSaveCommand(args: string, ctx: CommandContext): CommandResult {
   return { handled: true };
 }
 
-/** Handle /topic <title> — set topic title for current chat. */
+/** Handle /topic <title> — set topic title and save current chat to Talks list. */
 function handleTopicCommand(args: string, ctx: CommandContext): CommandResult {
   if (!args.trim()) {
     ctx.setError('Usage: /topic <title>');
     return { handled: true };
   }
-  ctx.setTopicTitle(args.trim());
+  ctx.saveTalk(args.trim());
+  return { handled: true };
+}
+
+/** Handle /pin [N] — pin the last assistant message or N-th from bottom. */
+function handlePinCommand(args: string, ctx: CommandContext): CommandResult {
+  const n = args.trim() ? parseInt(args.trim(), 10) : undefined;
+  if (n !== undefined && (isNaN(n) || n < 1)) {
+    ctx.setError('Usage: /pin [N] — N is a positive number');
+    return { handled: true };
+  }
+  ctx.pinMessage(n);
+  return { handled: true };
+}
+
+/** Handle /unpin [N] — unpin the most recent pin or pin #N. */
+function handleUnpinCommand(args: string, ctx: CommandContext): CommandResult {
+  const n = args.trim() ? parseInt(args.trim(), 10) : undefined;
+  if (n !== undefined && (isNaN(n) || n < 1)) {
+    ctx.setError('Usage: /unpin [N] — N is a positive number');
+    return { handled: true };
+  }
+  ctx.unpinMessage(n);
+  return { handled: true };
+}
+
+/** Handle /pins — list all pinned messages. */
+function handlePinsCommand(_args: string, ctx: CommandContext): CommandResult {
+  ctx.listPins();
+  return { handled: true };
+}
+
+/** Handle /job <subcommand> — manage jobs. */
+function handleJobCommand(args: string, ctx: CommandContext): CommandResult {
+  const trimmed = args.trim();
+  if (!trimmed) {
+    ctx.setError('Usage: /job add "schedule" prompt | /job pause|resume|delete N');
+    return { handled: true };
+  }
+
+  // Parse subcommand
+  if (trimmed.startsWith('add ')) {
+    const rest = trimmed.slice(4).trim();
+    // Parse quoted schedule: "schedule" prompt
+    const match = rest.match(/^"([^"]+)"\s+(.+)$/s);
+    if (!match) {
+      ctx.setError('Usage: /job add "schedule" prompt text');
+      return { handled: true };
+    }
+    ctx.addJob(match[1], match[2]);
+    return { handled: true };
+  }
+
+  const subMatch = trimmed.match(/^(pause|resume|delete)\s+(\d+)$/);
+  if (subMatch) {
+    const action = subMatch[1] as 'pause' | 'resume' | 'delete';
+    const index = parseInt(subMatch[2], 10);
+    if (action === 'pause') ctx.pauseJob(index);
+    else if (action === 'resume') ctx.resumeJob(index);
+    else ctx.deleteJob(index);
+    return { handled: true };
+  }
+
+  ctx.setError('Usage: /job add "schedule" prompt | /job pause|resume|delete N');
+  return { handled: true };
+}
+
+/** Handle /jobs — list all jobs for current talk. */
+function handleJobsCommand(_args: string, ctx: CommandContext): CommandResult {
+  ctx.listJobs();
+  return { handled: true };
+}
+
+/** Handle /reports [N] — view job reports for this talk (optionally for job #N). */
+function handleReportsCommand(args: string, ctx: CommandContext): CommandResult {
+  const trimmed = args.trim();
+  if (!trimmed) {
+    ctx.viewReports();
+    return { handled: true };
+  }
+  const n = parseInt(trimmed, 10);
+  if (isNaN(n) || n < 1) {
+    ctx.setError('Usage: /reports [N] — N is a positive job number');
+    return { handled: true };
+  }
+  ctx.viewReports(n);
+  return { handled: true };
+}
+
+/** Handle /objective [text|clear] — view, set, or clear the talk objective. */
+function handleObjectiveCommand(args: string, ctx: CommandContext): CommandResult {
+  const trimmed = args.trim();
+  if (!trimmed) {
+    ctx.showObjective();
+    return { handled: true };
+  }
+  if (trimmed === 'clear') {
+    ctx.setObjective(undefined);
+    return { handled: true };
+  }
+  ctx.setObjective(trimmed);
   return { handled: true };
 }
 
@@ -61,11 +177,18 @@ function handleTopicCommand(args: string, ctx: CommandContext): CommandResult {
  * Registry of slash commands.
  * Add new commands here — they'll be available immediately.
  */
-const COMMANDS: Record<string, CommandHandler> = {
-  model: handleModelCommand,
-  clear: handleClearCommand,
-  save: handleSaveCommand,
-  topic: handleTopicCommand,
+const COMMANDS: Record<string, { handler: CommandHandler; description: string }> = {
+  model: { handler: handleModelCommand, description: 'Switch AI model' },
+  clear: { handler: handleClearCommand, description: 'Clear current session' },
+  save: { handler: handleSaveCommand, description: 'Save chat to Talks' },
+  topic: { handler: handleTopicCommand, description: 'Set topic title and save' },
+  pin: { handler: handlePinCommand, description: 'Pin an assistant message' },
+  unpin: { handler: handleUnpinCommand, description: 'Unpin a message' },
+  pins: { handler: handlePinsCommand, description: 'List pinned messages' },
+  job: { handler: handleJobCommand, description: 'Add or manage a job' },
+  jobs: { handler: handleJobsCommand, description: 'List jobs for this talk' },
+  objective: { handler: handleObjectiveCommand, description: 'Set talk objective (system prompt)' },
+  reports: { handler: handleReportsCommand, description: 'View job reports' },
 };
 
 /**
@@ -78,10 +201,10 @@ export function dispatchCommand(input: string, ctx: CommandContext): boolean {
   const withoutSlash = trimmed.slice(1);
 
   // Check explicit commands (e.g. /model, /clear)
-  for (const [name, handler] of Object.entries(COMMANDS)) {
+  for (const [name, entry] of Object.entries(COMMANDS)) {
     if (withoutSlash === name || withoutSlash.startsWith(name + ' ')) {
       const args = withoutSlash.slice(name.length).trim();
-      handler(args, ctx);
+      entry.handler(args, ctx);
       return true;
     }
   }
@@ -95,4 +218,32 @@ export function dispatchCommand(input: string, ctx: CommandContext): boolean {
   }
 
   return false;
+}
+
+/**
+ * Get matching command completions for a given prefix.
+ * Input should be the text after "/" (e.g. "pi" for "/pi").
+ * Returns matching commands sorted by name.
+ */
+export function getCommandCompletions(prefix: string): CommandInfo[] {
+  const lower = prefix.toLowerCase();
+  const results: CommandInfo[] = [];
+
+  for (const [name, entry] of Object.entries(COMMANDS)) {
+    if (name.startsWith(lower)) {
+      // Expand /job into subcommand hints
+      if (name === 'job') {
+        results.push(
+          { name: 'job add "schedule" prompt', description: 'Add a scheduled job' },
+          { name: 'job pause N', description: 'Pause job #N' },
+          { name: 'job resume N', description: 'Resume job #N' },
+          { name: 'job delete N', description: 'Delete job #N' },
+        );
+      } else {
+        results.push({ name, description: entry.description });
+      }
+    }
+  }
+
+  return results.sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -28,6 +28,8 @@ interface TalksHubProps {
   onNewTerminal: () => void;
   onExit: () => void;
   setError: (error: string) => void;
+  onRenameTalk?: (talkId: string, title: string) => void;
+  onDeleteTalk?: (talkId: string) => void;
 }
 
 export function TalksHub({
@@ -45,6 +47,8 @@ export function TalksHub({
   onNewTerminal,
   onExit,
   setError,
+  onRenameTalk,
+  onDeleteTalk,
 }: TalksHubProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -69,7 +73,11 @@ export function TalksHub({
   // Get first line preview from session messages
   const getPreview = (talk: Talk): string => {
     const session = sessionManager.getSession(talk.sessionId);
-    if (!session || session.messages.length === 0) return 'No messages';
+    if (!session || session.messages.length === 0) {
+      // Gateway-only talk with no local session — show objective or placeholder
+      if (talk.objective) return talk.objective.slice(0, 40) + (talk.objective.length > 40 ? '...' : '');
+      return 'Gateway talk';
+    }
     const firstUserMsg = session.messages.find(m => m.role === 'user');
     if (!firstUserMsg) return 'No messages';
     const preview = firstUserMsg.content.split('\n')[0];
@@ -135,9 +143,13 @@ export function TalksHub({
     // Handle rename mode
     if (renameIndex !== null) {
       if (key.return) {
-        const talk = talks[renameIndex];
+        const talk = talks[renameIndex - 1];
         if (talk && renameValue.trim()) {
-          talkManager.setTopicTitle(talk.id, renameValue.trim());
+          if (onRenameTalk) {
+            onRenameTalk(talk.id, renameValue.trim());
+          } else {
+            talkManager.setTopicTitle(talk.id, renameValue.trim());
+          }
           setRefreshKey(k => k + 1);
         }
         setRenameIndex(null);
@@ -160,12 +172,16 @@ export function TalksHub({
       }
       // Confirm delete on second 'd' press
       if (input === 'd' || input === 'D') {
-        const talk = talks[confirmDeleteIndex];
+        const talk = talks[confirmDeleteIndex - 1];
         if (talk) {
-          talkManager.unsaveTalk(talk.id);
+          if (onDeleteTalk) {
+            onDeleteTalk(talk.id);
+          } else {
+            talkManager.unsaveTalk(talk.id);
+          }
           setRefreshKey(k => k + 1);
           // Adjust selection if we deleted the last item
-          if (selectedIndex >= talks.length - 1 && selectedIndex > 0) {
+          if (selectedIndex > talks.length - 1 && selectedIndex > 0) {
             setSelectedIndex(selectedIndex - 1);
           }
         }
@@ -193,124 +209,147 @@ export function TalksHub({
 
     if (key.downArrow) {
       setSelectedIndex(prev => {
-        const next = Math.min(talks.length - 1, prev + 1);
+        const next = Math.min(talks.length, prev + 1);
         ensureVisible(next);
         return next;
       });
       return;
     }
 
-    if (key.return && talks.length > 0) {
-      const talk = talks[selectedIndex];
-      if (talk) {
-        onSelectTalk(talk);
+    if (key.return) {
+      if (selectedIndex === 0) {
+        onNewChat();
+      } else {
+        const talk = talks[selectedIndex - 1];
+        if (talk) {
+          onSelectTalk(talk);
+        }
       }
       return;
     }
 
-    // 'r' to rename
-    if ((input === 'r' || input === 'R') && talks.length > 0) {
-      const talk = talks[selectedIndex];
+    // 'r' to rename (only for saved talks, not New Talk)
+    if ((input === 'r' || input === 'R') && selectedIndex > 0) {
+      const talk = talks[selectedIndex - 1];
       setRenameIndex(selectedIndex);
       setRenameValue(talk.topicTitle || '');
       return;
     }
 
-    // 'd' to delete (unsave) - enter confirmation mode
-    if ((input === 'd' || input === 'D') && talks.length > 0) {
+    // 'd' to delete (unsave) - enter confirmation mode (only for saved talks)
+    if ((input === 'd' || input === 'D') && selectedIndex > 0) {
       setConfirmDeleteIndex(selectedIndex);
       return;
     }
   });
 
-  const visibleTalks = talks.slice(scrollOffset, scrollOffset + visibleRows);
-  const hasMore = scrollOffset + visibleRows < talks.length;
+  // Total items: "New Talk" row + saved talks
+  const totalItems = 1 + talks.length;
+  const visibleStart = scrollOffset;
+  const visibleEnd = Math.min(totalItems, scrollOffset + visibleRows);
+  const hasMore = visibleEnd < totalItems;
   const hasLess = scrollOffset > 0;
 
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Text bold color="cyan">Saved Talks</Text>
+      <Text bold color="cyan">Talks</Text>
       <Box height={1} />
 
-      {talks.length === 0 ? (
-        <Box flexDirection="column">
-          <Text dimColor>No saved talks yet.</Text>
-          <Text dimColor>Use /save to save the current chat.</Text>
-        </Box>
-      ) : (
-        <>
-          {hasLess && <Text dimColor>  {'\u25B2'} more</Text>}
-          {visibleTalks.map((talk, i) => {
-            const actualIndex = scrollOffset + i;
-            const isSelected = actualIndex === selectedIndex;
-            const isRenaming = actualIndex === renameIndex;
-            const session = sessionManager.getSession(talk.sessionId);
-            const msgCount = session?.messages.length ?? 0;
+      {hasLess && <Text dimColor>  {'\u25B2'} more</Text>}
 
-            // Rename mode renders differently (TextInput can't be inside Text)
-            if (isRenaming) {
-              return (
-                <Box key={talk.id}>
-                  <Text color="cyan">{isSelected ? '> ' : '  '}</Text>
-                  <Text>Topic: </Text>
-                  <TextInput
-                    value={renameValue}
-                    onChange={setRenameValue}
-                    onSubmit={() => {
-                      if (renameValue.trim()) {
-                        talkManager.setTopicTitle(talk.id, renameValue.trim());
-                        setRefreshKey(k => k + 1);
-                      }
-                      setRenameIndex(null);
-                      setRenameValue('');
-                    }}
-                  />
-                </Box>
-              );
-            }
+      {/* Render visible items: index 0 = New Talk, 1+ = saved talks */}
+      {Array.from({ length: visibleEnd - visibleStart }, (_, i) => {
+        const actualIndex = visibleStart + i;
+        const isSelected = actualIndex === selectedIndex;
 
-            // Normal display: Topic Title OR (date/time + first line preview)
-            const updatedTime = formatUpdatedTime(talk.updatedAt);
-            if (talk.topicTitle) {
-              return (
-                <Box key={talk.id}>
-                  <Text color={isSelected ? 'cyan' : undefined}>
-                    {isSelected ? '> ' : '  '}
-                    <Text bold={isSelected}>{talk.topicTitle}</Text>
-                    <Text dimColor> ({msgCount} msg{msgCount !== 1 ? 's' : ''}) | {updatedTime}</Text>
-                  </Text>
-                </Box>
-              );
-            }
+        // Index 0: "New Talk" row
+        if (actualIndex === 0) {
+          return (
+            <Box key="__new_talk__">
+              <Text color={isSelected ? 'green' : 'green'}>
+                {isSelected ? '> ' : '  '}
+                <Text bold={isSelected}>+ New Talk</Text>
+              </Text>
+            </Box>
+          );
+        }
 
-            const sessionTime = formatSessionTime(talk.createdAt);
-            const preview = getPreview(talk);
-            return (
-              <Box key={talk.id}>
-                <Text color={isSelected ? 'cyan' : undefined}>
-                  {isSelected ? '> ' : '  '}
-                  <Text dimColor>{sessionTime}</Text>
-                  <Text> </Text>
-                  <Text>{preview}</Text>
-                  <Text dimColor> ({msgCount} msg{msgCount !== 1 ? 's' : ''}) | {updatedTime}</Text>
-                </Text>
-              </Box>
-            );
-          })}
-          {hasMore && <Text dimColor>  {'\u25BC'} more</Text>}
-        </>
-      )}
+        // Index 1+: saved talks
+        const talk = talks[actualIndex - 1];
+        if (!talk) return null;
+
+        const isRenaming = actualIndex === renameIndex;
+        const session = sessionManager.getSession(talk.sessionId);
+        const msgCount = session?.messages.length ?? 0;
+
+        // Rename mode renders differently (TextInput can't be inside Text)
+        if (isRenaming) {
+          return (
+            <Box key={talk.id}>
+              <Text color="cyan">{isSelected ? '> ' : '  '}</Text>
+              <Text>Topic: </Text>
+              <TextInput
+                value={renameValue}
+                onChange={setRenameValue}
+                onSubmit={() => {
+                  if (renameValue.trim()) {
+                    if (onRenameTalk) {
+                      onRenameTalk(talk.id, renameValue.trim());
+                    } else {
+                      talkManager.setTopicTitle(talk.id, renameValue.trim());
+                    }
+                    setRefreshKey(k => k + 1);
+                  }
+                  setRenameIndex(null);
+                  setRenameValue('');
+                }}
+              />
+            </Box>
+          );
+        }
+
+        // Normal display: Topic Title OR (date/time + first line preview)
+        const updatedTime = formatUpdatedTime(talk.updatedAt);
+        const hasJobs = (talk.jobs ?? []).some(j => j.active);
+        const jobIndicator = hasJobs ? '\u23F0 ' : '';
+        if (talk.topicTitle) {
+          return (
+            <Box key={talk.id}>
+              <Text color={isSelected ? 'cyan' : undefined}>
+                {isSelected ? '> ' : '  '}
+                {jobIndicator}<Text bold={isSelected}>{talk.topicTitle}</Text>
+                <Text dimColor> ({msgCount} msg{msgCount !== 1 ? 's' : ''}) | {updatedTime}</Text>
+              </Text>
+            </Box>
+          );
+        }
+
+        const sessionTime = formatSessionTime(talk.createdAt);
+        const preview = getPreview(talk);
+        return (
+          <Box key={talk.id}>
+            <Text color={isSelected ? 'cyan' : undefined}>
+              {isSelected ? '> ' : '  '}
+              {jobIndicator}<Text dimColor>{sessionTime}</Text>
+              <Text> </Text>
+              <Text>{preview}</Text>
+              <Text dimColor> ({msgCount} msg{msgCount !== 1 ? 's' : ''}) | {updatedTime}</Text>
+            </Text>
+          </Box>
+        );
+      })}
+      {hasMore && <Text dimColor>  {'\u25BC'} more</Text>}
 
       <Box height={1} />
       {renameIndex !== null ? (
         <Text dimColor>  Enter Save  Esc Cancel</Text>
       ) : confirmDeleteIndex !== null ? (
         <Text>
-          <Text color="yellow">  Delete "{talks[confirmDeleteIndex]?.topicTitle || 'Talk'}"?</Text>
+          <Text color="yellow">  Delete "{talks[confirmDeleteIndex - 1]?.topicTitle || 'Talk'}"?</Text>
           <Text dimColor>  d Confirm  Esc Cancel</Text>
         </Text>
       ) : (
-        <Text dimColor>  {'\u2191\u2193'} Navigate  Enter Continue  r Rename  d Delete  Esc Close</Text>
+        <Text dimColor>  {'\u2191\u2193'} Navigate  Enter {selectedIndex === 0 ? 'New Talk' : 'Continue'}  {selectedIndex > 0 ? 'r Rename  d Delete  ' : ''}Esc Close</Text>
       )}
     </Box>
   );
