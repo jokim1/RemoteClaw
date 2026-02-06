@@ -33,7 +33,7 @@ export interface RealtimeVoiceCallbacks {
   onUserTranscript?: (text: string, isFinal: boolean) => void;
   onAITranscript?: (text: string, isFinal: boolean) => void;
   onError?: (error: string) => void;
-  onSessionEnd?: () => void;
+  onSessionEnd?: (reason?: string) => void;
   onVolumeLevel?: (level: number) => void;
 }
 
@@ -42,6 +42,9 @@ const SAMPLE_RATE = 24000;  // 24kHz
 const CHANNELS = 1;         // Mono
 const BIT_DEPTH = 16;       // 16-bit
 
+// Keepalive interval (30 seconds)
+const KEEPALIVE_INTERVAL_MS = 30000;
+
 export class RealtimeVoiceService {
   private config: RealtimeVoiceServiceConfig;
   private ws: WebSocket | null = null;
@@ -49,9 +52,12 @@ export class RealtimeVoiceService {
   private playProcess: ChildProcess | null = null;
   private playbackQueue: Buffer[] = [];
   private playbackInterval: NodeJS.Timeout | null = null;
+  private keepaliveInterval: NodeJS.Timeout | null = null;
+  private connectionTimeout: NodeJS.Timeout | null = null;
   private state: RealtimeVoiceState = 'disconnected';
   private callbacks: RealtimeVoiceCallbacks = {};
   private _volumeLevel: number = 0;
+  private _lastError: string | null = null;
 
   constructor(config: RealtimeVoiceServiceConfig) {
     this.config = config;
@@ -111,6 +117,11 @@ export class RealtimeVoiceService {
     return this._volumeLevel;
   }
 
+  /** Get the last error that caused a disconnect (if any). */
+  getLastError(): string | null {
+    return this._lastError;
+  }
+
   /** Compute RMS volume level (0-100) from PCM16 audio buffer. */
   private computeVolumeLevel(buffer: Buffer): number {
     const sampleCount = Math.floor(buffer.length / 2);
@@ -135,6 +146,7 @@ export class RealtimeVoiceService {
       this.disconnect();
     }
 
+    this._lastError = null;
     this.setState('connecting');
 
     // Build WebSocket URL
@@ -143,6 +155,14 @@ export class RealtimeVoiceService {
     const wsUrl = `${baseUrl}/api/realtime-voice/stream?provider=${sessionConfig.provider}`;
 
     return new Promise((resolve) => {
+      let resolved = false;
+      const safeResolve = (value: boolean) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(value);
+        }
+      };
+
       try {
         const headers: Record<string, string> = {};
         if (this.config.gatewayToken) {
@@ -152,6 +172,12 @@ export class RealtimeVoiceService {
         this.ws = new WebSocket(wsUrl, { headers });
 
         this.ws.on('open', () => {
+          // Cancel connection timeout
+          if (this.connectionTimeout) {
+            clearTimeout(this.connectionTimeout);
+            this.connectionTimeout = null;
+          }
+
           // Send initial config
           this.send({
             type: 'config',
@@ -159,7 +185,15 @@ export class RealtimeVoiceService {
             systemPrompt: sessionConfig.systemPrompt,
           });
           this.setState('listening');
-          resolve(true);
+
+          // Start keepalive pings
+          this.keepaliveInterval = setInterval(() => {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+              this.ws.ping();
+            }
+          }, KEEPALIVE_INTERVAL_MS);
+
+          safeResolve(true);
         });
 
         this.ws.on('message', (data: WebSocket.Data) => {
@@ -167,29 +201,45 @@ export class RealtimeVoiceService {
         });
 
         this.ws.on('error', (error: Error) => {
-          this.callbacks.onError?.(error.message || 'WebSocket error');
+          const msg = error.message || 'WebSocket error';
+          this._lastError = msg;
+          this.callbacks.onError?.(msg);
           this.setState('disconnected');
-          resolve(false);
+          safeResolve(false);
         });
 
-        this.ws.on('close', () => {
+        this.ws.on('close', (code: number, reason: Buffer) => {
+          const reasonStr = reason?.toString() || '';
+          console.debug(`RealtimeVoice: WebSocket closed (code=${code}, reason=${reasonStr})`);
+
           this.stopStreaming();
+          this.stopKeepalive();
+
+          // Only report unexpected closes (not clean user-initiated ones)
+          if (code !== 1000 && !this._lastError) {
+            this._lastError = `Connection closed (code=${code}${reasonStr ? `, ${reasonStr}` : ''})`;
+          }
+
           this.setState('disconnected');
-          this.callbacks.onSessionEnd?.();
+          this.callbacks.onSessionEnd?.(this._lastError || undefined);
         });
 
-        // Timeout for connection
-        setTimeout(() => {
+        // Connection timeout — cancel if connection succeeds
+        this.connectionTimeout = setTimeout(() => {
+          this.connectionTimeout = null;
           if (this.state === 'connecting') {
+            this._lastError = 'Connection timeout';
             this.disconnect();
             this.callbacks.onError?.('Connection timeout');
-            resolve(false);
+            safeResolve(false);
           }
         }, 10000);
       } catch (err) {
-        this.callbacks.onError?.(err instanceof Error ? err.message : 'Failed to connect');
+        const msg = err instanceof Error ? err.message : 'Failed to connect';
+        this._lastError = msg;
+        this.callbacks.onError?.(msg);
         this.setState('disconnected');
-        resolve(false);
+        safeResolve(false);
       }
     });
   }
@@ -198,6 +248,12 @@ export class RealtimeVoiceService {
   disconnect(): void {
     this.stopStreaming();
     this.stopPlayback();
+    this.stopKeepalive();
+
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+      this.connectionTimeout = null;
+    }
 
     if (this.ws) {
       this.send({ type: 'end' });
@@ -250,8 +306,12 @@ export class RealtimeVoiceService {
       this.recProcess = null;
     });
 
-    this.recProcess.on('close', () => {
+    this.recProcess.on('close', (code) => {
       this.recProcess = null;
+      // Unexpected exit — notify if session is still active
+      if (code !== null && code !== 0 && this.state !== 'disconnected') {
+        this.callbacks.onError?.(`Mic process exited (code=${code})`);
+      }
     });
 
     return true;
@@ -262,6 +322,14 @@ export class RealtimeVoiceService {
     if (this.recProcess) {
       this.recProcess.kill('SIGTERM');
       this.recProcess = null;
+    }
+  }
+
+  /** Stop keepalive interval. */
+  private stopKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
     }
   }
 
@@ -301,6 +369,7 @@ export class RealtimeVoiceService {
           break;
 
         case 'error':
+          this._lastError = message.message || 'Unknown error';
           this.callbacks.onError?.(message.message);
           break;
 
@@ -309,7 +378,7 @@ export class RealtimeVoiceService {
           break;
 
         case 'session.end':
-          this.callbacks.onSessionEnd?.();
+          this.callbacks.onSessionEnd?.(this._lastError || undefined);
           this.disconnect();
           break;
       }
@@ -342,7 +411,8 @@ export class RealtimeVoiceService {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    this.playProcess.on('error', () => {
+    this.playProcess.on('error', (err) => {
+      this.callbacks.onError?.(`Playback error: ${err.message}`);
       this.playProcess = null;
     });
 

@@ -40,9 +40,9 @@ export const MODEL_REGISTRY: ModelInfo[] = [
   },
   // --- Anthropic ---
   {
-    id: 'anthropic/claude-opus-4-5',
+    id: 'anthropic/claude-opus-4-6',
     provider: 'Anthropic',
-    name: 'Claude Opus 4.5',
+    name: 'Claude Opus 4.6',
     shortAlias: 'Opus',
     emoji: '🧠',
     tier: 'powerful',

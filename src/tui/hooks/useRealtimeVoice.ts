@@ -50,6 +50,9 @@ export function useRealtimeVoice(opts: UseRealtimeVoiceOpts): RealtimeVoiceHookR
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
+  // Track transcript clear timeouts for cleanup
+  const transcriptTimersRef = useRef<NodeJS.Timeout[]>([]);
+
   // Set default provider when capabilities load
   useEffect(() => {
     if (opts.capabilities?.available && opts.capabilities.providers.length > 0) {
@@ -76,30 +79,51 @@ export function useRealtimeVoice(opts: UseRealtimeVoiceOpts): RealtimeVoiceHookR
         setUserTranscript(text);
         // Clear after a moment if final
         if (isFinal) {
-          setTimeout(() => setUserTranscript(''), 3000);
+          const timer = setTimeout(() => setUserTranscript(''), 3000);
+          transcriptTimersRef.current.push(timer);
         }
       },
       onAITranscript: (text, isFinal) => {
         setAiTranscript(text);
         // Clear after a moment if final
         if (isFinal) {
-          setTimeout(() => setAiTranscript(''), 3000);
+          const timer = setTimeout(() => setAiTranscript(''), 3000);
+          transcriptTimersRef.current.push(timer);
         }
       },
       onError: (error) => {
         optsRef.current.setError(error);
       },
-      onSessionEnd: () => {
+      onSessionEnd: (reason?: string) => {
         setState('disconnected');
         setUserTranscript('');
         setAiTranscript('');
         setVolumeLevel(0);
+        // Show reason if session ended unexpectedly
+        if (reason) {
+          optsRef.current.setError(`Live Chat ended: ${reason}`);
+        }
       },
       onVolumeLevel: (level) => {
         setVolumeLevel(level);
       },
     });
   }, [opts.realtimeServiceRef.current]);
+
+  // Cleanup on unmount: disconnect session and clear timers
+  useEffect(() => {
+    return () => {
+      const service = optsRef.current.realtimeServiceRef.current;
+      if (service && service.getState() !== 'disconnected') {
+        service.disconnect();
+      }
+      // Clear any pending transcript timers
+      for (const timer of transcriptTimersRef.current) {
+        clearTimeout(timer);
+      }
+      transcriptTimersRef.current = [];
+    };
+  }, []);
 
   const setProvider = useCallback((newProvider: RealtimeVoiceProvider) => {
     setProviderState(newProvider);
