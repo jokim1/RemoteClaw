@@ -27,7 +27,8 @@ export function useChat(
   onModelError: (error: string) => void,
   pricingRef: MutableRefObject<ModelPricing>,
   activeTalkIdRef: MutableRefObject<string | null>,
-  onMessageComplete?: MutableRefObject<((msg: Message) => void) | null>,
+  /** Gateway talk ID — when set, messages route through /api/talks/:id/chat */
+  gatewayTalkIdRef: MutableRefObject<string | null>,
 ) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -59,7 +60,6 @@ export function useChat(
     const userMsg = createMessage('user', trimmed);
     setMessages(prev => [...prev, userMsg]);
     sessionManagerRef.current?.addMessage(userMsg);
-    onMessageComplete?.current?.(userMsg);
 
     isProcessingRef.current = true;
     setIsProcessing(true);
@@ -68,9 +68,15 @@ export function useChat(
     // Helper to check if still on the same talk
     const isStillOnSameTalk = () => activeTalkIdRef.current === originTalkId;
 
+    // Route through gateway Talk endpoint when available, otherwise direct
+    const gwTalkId = gatewayTalkIdRef.current;
+
     try {
       let fullContent = '';
-      for await (const chunk of chatService.streamMessage(trimmed, history)) {
+      const stream = gwTalkId
+        ? chatService.streamTalkMessage(gwTalkId, trimmed)
+        : chatService.streamMessage(trimmed, history);
+      for await (const chunk of stream) {
         fullContent += chunk;
         // Only update streaming UI if still on the same talk
         if (isStillOnSameTalk()) {
@@ -78,8 +84,8 @@ export function useChat(
         }
       }
 
-      // If streaming yielded no content, fall back to non-streaming
-      if (!fullContent.trim()) {
+      // If streaming yielded no content, fall back to non-streaming (only for direct mode)
+      if (!fullContent.trim() && !gwTalkId) {
         if (isStillOnSameTalk()) {
           setStreamingContent('retrying...');
         }
@@ -103,7 +109,7 @@ export function useChat(
         if (isStillOnSameTalk()) {
           const sysMsg = createMessage('system', `Gateway error: ${fullContent}`);
           setMessages(prev => [...prev, sysMsg]);
-          onMessageComplete?.current?.(sysMsg);
+
           setStreamingContent('');
         }
         return;
@@ -113,15 +119,15 @@ export function useChat(
         const model = chatService.lastResponseModel ?? currentModelRef.current;
         const assistantMsg = createMessage('assistant', fullContent, model);
 
-        // Always save to the original session (even if user switched talks)
-        if (originSessionId) {
+        // Save to local session when not using gateway (gateway persists its own history)
+        if (!gwTalkId && originSessionId) {
           sessionManagerRef.current?.addMessageToSession(originSessionId, assistantMsg);
         }
 
         // Only update UI and speak if still on the same talk
         if (isStillOnSameTalk()) {
           setMessages(prev => [...prev, assistantMsg]);
-          onMessageComplete?.current?.(assistantMsg);
+
           speakResponseRef.current?.(fullContent);
         }
       } else if (!fullContent.trim()) {
@@ -129,7 +135,7 @@ export function useChat(
         if (isStillOnSameTalk()) {
           const sysMsg = createMessage('system', 'No response received from AI. The model may be unavailable or the connection was interrupted.');
           setMessages(prev => [...prev, sysMsg]);
-          onMessageComplete?.current?.(sysMsg);
+
         }
       }
 
@@ -153,7 +159,6 @@ export function useChat(
         setErrorRef.current(errorMessage);
         const sysMsg = createMessage('system', `Error: ${errorMessage}`);
         setMessages(prev => [...prev, sysMsg]);
-        onMessageComplete?.current?.(sysMsg);
       }
 
       if (/\b(40[1349]|429|5\d{2})\b/.test(errorMessage)) {
