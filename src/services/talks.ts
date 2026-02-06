@@ -9,8 +9,8 @@
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import type { Talk, Message } from '../types';
-import { generateContextMd } from './context-generator.js';
+import { randomUUID } from 'crypto';
+import type { Talk, Job } from '../types';
 
 /** Validate that a talk ID is safe for use as a directory name. */
 function isValidTalkId(id: string): boolean {
@@ -165,20 +165,6 @@ export class TalkManager {
     return true;
   }
 
-  /** Generate and save AI context markdown for a talk. */
-  updateContextMd(talkId: string, messages: Message[]): void {
-    const talk = this.talks.get(talkId);
-    if (!talk) return;
-
-    const contextMd = generateContextMd(talk, messages);
-    const talkDir = path.join(TALKS_DIR, talkId);
-    const contextPath = path.join(talkDir, 'context.md');
-
-    fsp.mkdir(talkDir, { recursive: true })
-      .then(() => fsp.writeFile(contextPath, contextMd))
-      .catch(() => {});
-  }
-
   /** Get the context markdown for a talk. */
   getContextMd(talkId: string): string | null {
     if (!isValidTalkId(talkId)) return null;
@@ -188,6 +174,197 @@ export class TalkManager {
     } catch {
       return null;
     }
+  }
+
+  // --- Objective methods ---
+
+  /** Set or clear the objective for a talk. */
+  setObjective(talkId: string, objective: string | undefined): boolean {
+    const talk = this.talks.get(talkId);
+    if (!talk) return false;
+
+    talk.objective = objective;
+    talk.updatedAt = Date.now();
+    if (talk.isSaved) this.persistTalk(talk);
+    return true;
+  }
+
+  /** Get the objective for a talk. */
+  getObjective(talkId: string): string | undefined {
+    const talk = this.talks.get(talkId);
+    return talk?.objective;
+  }
+
+  /** Set the gateway talk ID mapping for a local talk. */
+  setGatewayTalkId(talkId: string, gatewayTalkId: string): boolean {
+    const talk = this.talks.get(talkId);
+    if (!talk) return false;
+
+    talk.gatewayTalkId = gatewayTalkId;
+    if (talk.isSaved) this.persistTalk(talk);
+    return true;
+  }
+
+  /** Get the gateway talk ID for a local talk. */
+  getGatewayTalkId(talkId: string): string | undefined {
+    const talk = this.talks.get(talkId);
+    return talk?.gatewayTalkId;
+  }
+
+  // --- Pin methods ---
+
+  /** Add a pinned message ID to a talk. */
+  addPin(talkId: string, messageId: string): boolean {
+    const talk = this.talks.get(talkId);
+    if (!talk) return false;
+
+    if (!talk.pinnedMessageIds) talk.pinnedMessageIds = [];
+    if (talk.pinnedMessageIds.includes(messageId)) return false;
+
+    talk.pinnedMessageIds.push(messageId);
+    talk.updatedAt = Date.now();
+    if (talk.isSaved) this.persistTalk(talk);
+    return true;
+  }
+
+  /** Remove a pinned message ID from a talk. */
+  removePin(talkId: string, messageId: string): boolean {
+    const talk = this.talks.get(talkId);
+    if (!talk || !talk.pinnedMessageIds) return false;
+
+    const idx = talk.pinnedMessageIds.indexOf(messageId);
+    if (idx === -1) return false;
+
+    talk.pinnedMessageIds.splice(idx, 1);
+    talk.updatedAt = Date.now();
+    if (talk.isSaved) this.persistTalk(talk);
+    return true;
+  }
+
+  /** Get all pinned message IDs for a talk. */
+  getPinnedMessageIds(talkId: string): string[] {
+    const talk = this.talks.get(talkId);
+    return talk?.pinnedMessageIds ?? [];
+  }
+
+  // --- Job methods (1-based indexes for user-facing) ---
+
+  /** Add a new job to a talk. */
+  addJob(talkId: string, schedule: string, prompt: string): Job | null {
+    const talk = this.talks.get(talkId);
+    if (!talk) return null;
+
+    if (!talk.jobs) talk.jobs = [];
+
+    const job: Job = {
+      id: randomUUID(),
+      schedule,
+      prompt,
+      active: true,
+      createdAt: Date.now(),
+    };
+
+    talk.jobs.push(job);
+    talk.updatedAt = Date.now();
+    if (talk.isSaved) this.persistTalk(talk);
+    return job;
+  }
+
+  /** Pause a job by 1-based index. */
+  pauseJob(talkId: string, index: number): boolean {
+    const talk = this.talks.get(talkId);
+    if (!talk?.jobs) return false;
+
+    const job = talk.jobs[index - 1];
+    if (!job) return false;
+
+    job.active = false;
+    talk.updatedAt = Date.now();
+    if (talk.isSaved) this.persistTalk(talk);
+    return true;
+  }
+
+  /** Resume a job by 1-based index. */
+  resumeJob(talkId: string, index: number): boolean {
+    const talk = this.talks.get(talkId);
+    if (!talk?.jobs) return false;
+
+    const job = talk.jobs[index - 1];
+    if (!job) return false;
+
+    job.active = true;
+    talk.updatedAt = Date.now();
+    if (talk.isSaved) this.persistTalk(talk);
+    return true;
+  }
+
+  /** Delete a job by 1-based index. */
+  deleteJob(talkId: string, index: number): boolean {
+    const talk = this.talks.get(talkId);
+    if (!talk?.jobs) return false;
+
+    if (index < 1 || index > talk.jobs.length) return false;
+
+    talk.jobs.splice(index - 1, 1);
+    talk.updatedAt = Date.now();
+    if (talk.isSaved) this.persistTalk(talk);
+    return true;
+  }
+
+  /** Get all jobs for a talk. */
+  getJobs(talkId: string): Job[] {
+    const talk = this.talks.get(talkId);
+    return talk?.jobs ?? [];
+  }
+
+  /** Check if a talk has any active jobs. */
+  hasActiveJobs(talkId: string): boolean {
+    const talk = this.talks.get(talkId);
+    return (talk?.jobs ?? []).some(j => j.active);
+  }
+
+  /** Import a talk from gateway data (creates local entry if not present). */
+  importGatewayTalk(gwTalk: {
+    id: string;
+    topicTitle?: string;
+    objective?: string;
+    model?: string;
+    pinnedMessageIds?: string[];
+    jobs?: Job[];
+    createdAt: number;
+    updatedAt: number;
+  }): Talk {
+    const existing = this.talks.get(gwTalk.id);
+    if (existing) {
+      // Update local metadata from gateway (gateway is source of truth)
+      existing.topicTitle = gwTalk.topicTitle ?? existing.topicTitle;
+      existing.objective = gwTalk.objective ?? existing.objective;
+      existing.model = gwTalk.model ?? existing.model;
+      existing.pinnedMessageIds = gwTalk.pinnedMessageIds ?? existing.pinnedMessageIds;
+      existing.jobs = gwTalk.jobs ?? existing.jobs;
+      existing.updatedAt = gwTalk.updatedAt;
+      existing.gatewayTalkId = gwTalk.id;
+      return existing;
+    }
+
+    // Create a local talk entry backed by this gateway talk
+    // sessionId matches the gateway talk ID since there's no local session
+    const talk: Talk = {
+      id: gwTalk.id,
+      sessionId: gwTalk.id,
+      topicTitle: gwTalk.topicTitle,
+      objective: gwTalk.objective,
+      model: gwTalk.model,
+      pinnedMessageIds: gwTalk.pinnedMessageIds,
+      jobs: gwTalk.jobs,
+      gatewayTalkId: gwTalk.id,
+      isSaved: true,
+      createdAt: gwTalk.createdAt,
+      updatedAt: gwTalk.updatedAt,
+    };
+
+    this.talks.set(talk.id, talk);
+    return talk;
   }
 
   /** Persist talk metadata to disk (async, fire-and-forget). */

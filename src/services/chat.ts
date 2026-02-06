@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { Message, RateLimitInfo } from '../types.js';
+import type { Message, RateLimitInfo, Job, JobReport } from '../types.js';
 import type { IChatService } from './interfaces.js';
 import {
   CHAT_TIMEOUT_MS,
@@ -138,7 +138,7 @@ export class ChatService implements IChatService {
 
   async sendMessage(
     userMessage: string,
-    history: Message[] = []
+    history: Message[] = [],
   ): Promise<ChatResponse> {
     const response = await fetch(`${this.config.gatewayUrl}/v1/chat/completions`, {
       method: 'POST',
@@ -173,7 +173,7 @@ export class ChatService implements IChatService {
 
   async *streamMessage(
     userMessage: string,
-    history: Message[] = []
+    history: Message[] = [],
   ): AsyncGenerator<string, void, unknown> {
     const response = await fetch(`${this.config.gatewayUrl}/v1/chat/completions`, {
       method: 'POST',
@@ -213,6 +213,289 @@ export class ChatService implements IChatService {
       buffer = lines.pop() ?? '';
 
       for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') return;
+
+          try {
+            const parsed = validateSSEChunk(JSON.parse(data));
+            if (!parsed) continue;
+            if (!this.lastResponseModel && parsed.model) {
+              this.lastResponseModel = parsed.model;
+            }
+            if (parsed.usage) {
+              this.lastResponseUsage = {
+                promptTokens: parsed.usage.prompt_tokens ?? 0,
+                completionTokens: parsed.usage.completion_tokens ?? 0,
+              };
+            }
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) yield stripAnsi(content);
+          } catch (err) {
+            console.debug('SSE parse error (expected for partial chunks):', err);
+          }
+        }
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Gateway Talk API methods
+  // -----------------------------------------------------------------------
+
+  /** Create a Talk on the gateway. Returns the gateway talk ID. */
+  async createGatewayTalk(model?: string): Promise<string | null> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ model }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) {
+        console.debug(`createGatewayTalk failed: ${response.status} ${response.statusText}`);
+        return null;
+      }
+      const data = await response.json() as { id?: string };
+      return data.id ?? null;
+    } catch (err) {
+      console.debug('createGatewayTalk error:', err);
+      return null;
+    }
+  }
+
+  /** Update Talk metadata on the gateway (objective, topicTitle, model). */
+  async updateGatewayTalk(talkId: string, updates: { objective?: string; topicTitle?: string; model?: string }): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify(updates),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Delete a Talk on the gateway. */
+  async deleteGatewayTalk(talkId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}`, {
+        method: 'DELETE',
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Fetch Talk metadata from gateway. */
+  async getGatewayTalk(talkId: string): Promise<{ id: string; topicTitle?: string; objective?: string; model?: string; pinnedMessageIds: string[]; contextMd?: string } | null> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}`, {
+        method: 'GET',
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) return null;
+      return await response.json() as any;
+    } catch {
+      return null;
+    }
+  }
+
+  /** List all talks from the gateway. */
+  async listGatewayTalks(): Promise<Array<{ id: string; topicTitle?: string; objective?: string; model?: string; pinnedMessageIds: string[]; jobs: Job[]; createdAt: number; updatedAt: number }>> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks`, {
+        method: 'GET',
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) return [];
+      const data = await response.json() as { talks?: any[] };
+      return data.talks ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Fetch message history from the gateway. */
+  async fetchGatewayMessages(talkId: string, limit = 100): Promise<Message[]> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}/messages?limit=${limit}`, {
+        method: 'GET',
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) return [];
+      const data = await response.json() as { messages?: Message[] };
+      return data.messages ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Pin a message on the gateway. */
+  async pinGatewayMessage(talkId: string, messageId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}/pin/${encodeURIComponent(messageId)}`, {
+        method: 'POST',
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Unpin a message on the gateway. */
+  async unpinGatewayMessage(talkId: string, messageId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}/pin/${encodeURIComponent(messageId)}`, {
+        method: 'DELETE',
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Create a job on a gateway talk. */
+  async createGatewayJob(talkId: string, schedule: string, prompt: string): Promise<Job | null> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ schedule, prompt }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) return null;
+      return await response.json() as Job;
+    } catch {
+      return null;
+    }
+  }
+
+  /** List all jobs for a gateway talk. */
+  async listGatewayJobs(talkId: string): Promise<Job[]> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}/jobs`, {
+        method: 'GET',
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) return [];
+      const data = await response.json() as { jobs?: Job[] };
+      return data.jobs ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Update a job on a gateway talk (active, schedule, prompt). */
+  async updateGatewayJob(talkId: string, jobId: string, updates: { active?: boolean; schedule?: string; prompt?: string }): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}/jobs/${encodeURIComponent(jobId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify(updates),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Delete a job on a gateway talk. */
+  async deleteGatewayJob(talkId: string, jobId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}/jobs/${encodeURIComponent(jobId)}`, {
+        method: 'DELETE',
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Fetch job reports from a gateway talk. */
+  async fetchGatewayReports(talkId: string, jobId?: string, limit = 20): Promise<JobReport[]> {
+    try {
+      const path = jobId
+        ? `/api/talks/${encodeURIComponent(talkId)}/jobs/${encodeURIComponent(jobId)}/reports`
+        : `/api/talks/${encodeURIComponent(talkId)}/reports`;
+      const response = await fetch(`${this.config.gatewayUrl}${path}?limit=${limit}`, {
+        method: 'GET',
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) return [];
+      const data = await response.json() as { reports?: JobReport[] };
+      return data.reports ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Stream a message through the gateway Talk chat endpoint.
+   * The gateway handles system prompt, context, and history.
+   */
+  async *streamTalkMessage(
+    talkId: string,
+    userMessage: string,
+    model?: string,
+  ): AsyncGenerator<string, void, unknown> {
+    const response = await fetch(`${this.config.gatewayUrl}/api/talks/${encodeURIComponent(talkId)}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+      body: JSON.stringify({
+        message: userMessage,
+        model: model ?? this.config.model,
+      }),
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Gateway error (${response.status}): ${error.slice(0, 200)}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    this.lastResponseModel = undefined;
+    this.lastResponseUsage = undefined;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      if (buffer.length > MAX_STREAM_BUFFER_BYTES) {
+        reader.cancel();
+        throw new Error('Streaming buffer exceeded size limit');
+      }
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        // Skip custom meta events from gateway
+        if (line.startsWith('event: ')) continue;
+
         if (line.startsWith('data: ')) {
           const data = line.slice(6);
           if (data === '[DONE]') return;
@@ -282,7 +565,11 @@ export class ChatService implements IChatService {
     try {
       const response = await fetch(`${this.config.gatewayUrl}/v1/chat/completions`, {
         method: 'POST',
-        headers: this.chatHeaders(),
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.authHeaders(),
+          'x-moltbot-agent-id': this.config.agentId,
+        },
         body: JSON.stringify({
           model: targetModel,
           messages: [{ role: 'user', content: 'hi' }],
@@ -333,7 +620,7 @@ export class ChatService implements IChatService {
     return this.config.model;
   }
 
-  async setModelOverride(model: string): Promise<boolean> {
+  async setModelOverride(model: string, signal?: AbortSignal): Promise<boolean> {
     try {
       const response = await fetch(`${this.config.gatewayUrl}/tools/invoke`, {
         method: 'POST',
@@ -349,12 +636,14 @@ export class ChatService implements IChatService {
           },
           sessionKey: this.sessionKey,
         }),
+        signal,
       });
 
       if (!response.ok) return false;
       const result = validateToolResult(await response.json());
       return result?.ok === true;
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return false;
       console.debug('setModelOverride failed:', err);
       return false;
     }
