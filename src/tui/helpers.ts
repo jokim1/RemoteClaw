@@ -21,6 +21,25 @@ export function createMessage(
   };
 }
 
+/** Extract ```job``` blocks from AI response text. */
+export function parseJobBlocks(text: string): Array<{ schedule: string; prompt: string }> {
+  const results: Array<{ schedule: string; prompt: string }> = [];
+  const regex = /```job\s*\n([\s\S]*?)```/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const block = match[1];
+    const scheduleLine = block.match(/^schedule:\s*(.+)$/m);
+    const promptLine = block.match(/^prompt:\s*([\s\S]+?)$/m);
+    if (scheduleLine && promptLine) {
+      results.push({
+        schedule: scheduleLine[1].trim(),
+        prompt: promptLine[1].trim(),
+      });
+    }
+  }
+  return results;
+}
+
 /** Remove leaked control characters from the input field (Ink workaround). */
 export function cleanInputChar(
   setter: (fn: (prev: string) => string) => void,

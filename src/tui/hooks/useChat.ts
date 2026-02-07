@@ -11,7 +11,7 @@ import type { Message } from '../../types.js';
 import type { ChatService } from '../../services/chat.js';
 import type { SessionManager } from '../../services/sessions.js';
 import { isGatewaySentinel } from '../../constants.js';
-import { createMessage } from '../helpers.js';
+import { createMessage, parseJobBlocks } from '../helpers.js';
 
 export interface ModelPricing {
   inputPer1M: number;
@@ -127,6 +127,13 @@ export function useChat(
         // Only update UI and speak if still on the same talk
         if (isStillOnSameTalk()) {
           setMessages(prev => [...prev, assistantMsg]);
+
+          // Show confirmation for any auto-created jobs
+          const jobBlocks = parseJobBlocks(fullContent);
+          for (const { schedule, prompt } of jobBlocks) {
+            const jobMsg = createMessage('system', `Job created: "${schedule}" — ${prompt}`);
+            setMessages(prev => [...prev, jobMsg]);
+          }
 
           speakResponseRef.current?.(fullContent);
         }
