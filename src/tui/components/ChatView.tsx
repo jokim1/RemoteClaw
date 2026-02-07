@@ -350,7 +350,7 @@ function MessageBlock({ message, isPinned, skipLines = 0, showLines = 0, content
       {rendered.showSpeaker && (
         <Text color={speakerColor} bold>{speakerName}:{isPinned ? ' \uD83D\uDCCC' : ''}</Text>
       )}
-      {rendered.text && (
+      {rendered.text.length > 0 && (
         <Box paddingLeft={2}>
           <Text>{rendered.text}</Text>
         </Box>

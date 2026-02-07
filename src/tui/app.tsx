@@ -1308,7 +1308,7 @@ function App({ options }: AppProps) {
           volumeLevel={realtimeVoice.isActive ? realtimeVoice.volumeLevel : voice.volumeLevel}
           width={terminalWidth - 2}
           isActive={!isOverlayActive}
-          maxVisibleLines={maxInputLines}
+          maxVisibleLines={inputLines}
           realtimeState={realtimeVoice.state}
           userTranscript={realtimeVoice.userTranscript}
           aiTranscript={realtimeVoice.aiTranscript}
