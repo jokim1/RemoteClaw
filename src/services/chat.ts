@@ -658,9 +658,10 @@ export class ChatService implements IChatService {
       });
 
       if (!response.ok) return null;
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('json')) return null;
       return validateCostUsage(await response.json()) as CostUsageResult | null;
-    } catch (err) {
-      console.debug('getCostUsage failed:', err);
+    } catch {
       return null;
     }
   }

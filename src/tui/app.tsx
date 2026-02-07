@@ -244,7 +244,8 @@ function App({ options }: AppProps) {
   );
 
   // maxOffset = total visual lines - viewport height (can't scroll past first message)
-  const scrollMaxOffset = Math.max(0, totalMessageLines - chatHeight);
+  // +1 accounts for the "more below" indicator line shown when scrolled to the top
+  const scrollMaxOffset = Math.max(0, totalMessageLines - chatHeight + 1);
 
   const mouseScroll = useMouseScroll({
     maxOffset: scrollMaxOffset,

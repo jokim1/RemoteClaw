@@ -189,22 +189,22 @@ export function ChatView({
     heightBudget = Math.max(0, heightBudget - welcomeLines);
   }
 
-  // First compute: determine if we need scroll indicators
-  const prelimSlice = useMemo(
-    () => computeVisibleMessages(messages, messageLinesArray, scrollOffset, heightBudget),
-    [messages, messageLinesArray, scrollOffset, heightBudget],
+  // Pre-determine scroll indicators to avoid two-pass oscillation.
+  // needDown is purely scroll-position based.
+  // needUp accounts for the down indicator's line when checking if content is hidden above.
+  const needDown = scrollOffset > 0;
+  const needUp = totalMessageLines > scrollOffset + (heightBudget - (needDown ? 1 : 0));
+  const indicatorLines = (needDown ? 1 : 0) + (needUp ? 1 : 0);
+  const messageBudget = Math.max(0, heightBudget - indicatorLines);
+
+  // Single-pass computation (no recompute needed)
+  const slice = useMemo(
+    () => computeVisibleMessages(messages, messageLinesArray, scrollOffset, messageBudget),
+    [messages, messageLinesArray, scrollOffset, messageBudget],
   );
 
-  const showUpIndicator = prelimSlice.hiddenAbove > 0 || prelimSlice.firstMessageSkipLines > 0;
-  const showDownIndicator = prelimSlice.hasContentBelow;
-  const indicatorLines = (showUpIndicator ? 1 : 0) + (showDownIndicator ? 1 : 0);
-
-  // Final compute: subtract indicator lines if needed (stable — at most one recompute)
-  const finalBudget = Math.max(0, heightBudget - indicatorLines);
-  const slice = useMemo(() => {
-    if (indicatorLines === 0) return prelimSlice;
-    return computeVisibleMessages(messages, messageLinesArray, scrollOffset, finalBudget);
-  }, [indicatorLines, messages, messageLinesArray, scrollOffset, finalBudget, prelimSlice]);
+  const showUpIndicator = needUp;
+  const showDownIndicator = needDown;
 
   // Cap streaming display to remaining space
   const remainingForStream = Math.max(0, availableHeight - slice.linesUsed - indicatorLines - (showWelcome ? welcomeLines : 0));
