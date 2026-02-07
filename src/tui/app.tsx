@@ -307,19 +307,7 @@ function App({ options }: AppProps) {
     talkManagerRef.current.setModel(talk.id, session.model || options.model || DEFAULT_MODEL);
     setActiveTalkId(talk.id);
 
-    // Create a gateway talk (async — the gatewayTalkId gets set when it resolves)
-    const chatSvc = chatServiceRef.current;
-    const localTalkId = talk.id;
-    if (chatSvc) {
-      chatSvc.createGatewayTalk(session.model || options.model || DEFAULT_MODEL).then(gwId => {
-        if (gwId) {
-          gatewayTalkIdRef.current = gwId;
-          talkManagerRef.current?.setGatewayTalkId(localTalkId, gwId);
-        } else {
-          setError('Failed to create talk on server — jobs/reports unavailable');
-        }
-      });
-    }
+    // Gateway talk is created lazily on first message send (see handleSubmit)
 
     // Batch state updates
     const msgs = session.messages;
@@ -834,17 +822,8 @@ function App({ options }: AppProps) {
         setActiveTalkId(talk.id);
       }
 
-      // Create a new gateway talk
-      gatewayTalkIdRef.current = null; // Clear while creating
-      const newLocalTalkId = talk?.id;
-      chatServiceRef.current?.createGatewayTalk(currentModel).then(gwId => {
-        if (gwId) {
-          gatewayTalkIdRef.current = gwId;
-          if (newLocalTalkId) talkManagerRef.current?.setGatewayTalkId(newLocalTalkId, gwId);
-        } else {
-          setError('Failed to create talk on server — jobs/reports unavailable');
-        }
-      });
+      // Gateway talk is created lazily on first message send
+      gatewayTalkIdRef.current = null;
 
       chat.setMessages([]);
       setSessionName(session.name);
@@ -877,14 +856,8 @@ function App({ options }: AppProps) {
         }
       });
     } else {
-      // No gateway talk yet — create one for this talk
+      // Gateway talk will be created lazily on first message send
       gatewayTalkIdRef.current = null;
-      chatServiceRef.current?.createGatewayTalk(talk.model || session?.model).then(newGwId => {
-        if (newGwId) {
-          gatewayTalkIdRef.current = newGwId;
-          talkManagerRef.current?.setGatewayTalkId(talk.id, newGwId);
-        }
-      });
     }
 
     // Suppress gateway's initial probe immediately (synchronous ref, no React delay)
@@ -970,6 +943,22 @@ function App({ options }: AppProps) {
 
     setInputText('');
     mouseScroll.scrollToBottom();
+
+    // Lazy gateway talk creation + auto-save on first user message
+    if (!gatewayTalkIdRef.current && chatServiceRef.current) {
+      // Auto-save: this talk now has activity
+      if (activeTalkIdRef.current) {
+        talkManagerRef.current?.saveTalk(activeTalkIdRef.current);
+      }
+      chatServiceRef.current.createGatewayTalk(currentModelRef.current).then(gwId => {
+        if (gwId) {
+          gatewayTalkIdRef.current = gwId;
+          if (activeTalkIdRef.current) {
+            talkManagerRef.current?.setGatewayTalkId(activeTalkIdRef.current, gwId);
+          }
+        }
+      });
+    }
 
     // If already processing, queue the message
     if (chat.isProcessing) {

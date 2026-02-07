@@ -368,7 +368,7 @@ export class TalkManager {
       pinnedMessageIds: gwTalk.pinnedMessageIds,
       jobs: gwTalk.jobs,
       gatewayTalkId: gwTalk.id,
-      isSaved: true,
+      isSaved: false,
       createdAt: gwTalk.createdAt,
       updatedAt: gwTalk.updatedAt,
     };
